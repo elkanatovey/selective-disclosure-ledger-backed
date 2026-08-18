@@ -326,9 +326,62 @@ namespace scitt_sd::native
 
     // Why this API never reports a receipt result, in the report itself.
     constexpr std::string_view SCITT_SKIPPED_DETAIL =
-      "Not checked here. This tool does not verify SCITT receipts or Merkle "
-      "proofs; the official SCITT verifier must be run separately against the "
-      "registered statement before this bundle can be treated as transparent.";
+      "Not checked: no transparency service key was supplied. Without one, "
+      "nothing here shows the statement was ever registered.";
+
+    struct ReceiptReport
+    {
+      std::string status = "skipped";
+      std::string detail = std::string(SCITT_SKIPPED_DETAIL);
+    };
+
+    // Checks a receipt against the service key a reader supplies out of band.
+    // The receipt carries the registered statement as its payload, so a valid
+    // signature over exactly those bytes is what ties the service's attestation
+    // to this statement and no other.
+    class ServiceKeyReceiptVerifier : public verify::ReceiptVerifier
+    {
+    public:
+      explicit ServiceKeyReceiptVerifier(ccf::crypto::Pem service_key) :
+        key(std::move(service_key))
+      {}
+
+      verify::ReceiptInfo verify(
+        std::span<const uint8_t> receipt,
+        std::span<const uint8_t> registered_statement) const override
+      {
+        std::span<uint8_t> attested;
+        bool signed_by_service = false;
+        try
+        {
+          signed_by_service =
+            ccf::crypto::make_cose_verifier_from_key(key)->verify(
+              receipt, attested);
+        }
+        catch (const std::exception& e)
+        {
+          throw verify::VerificationError(
+            std::string("the receipt could not be checked: ") + e.what(),
+            verify::Check::Receipt);
+        }
+        if (!signed_by_service)
+        {
+          throw verify::VerificationError(
+            "the receipt is not signed by the transparency service",
+            verify::Check::Receipt);
+        }
+        if (!std::ranges::equal(attested, registered_statement))
+        {
+          throw verify::VerificationError(
+            "the receipt covers different bytes from the registered statement",
+            verify::Check::Receipt);
+        }
+        return {};
+      }
+
+    private:
+      ccf::crypto::Pem key;
+    };
 
     ordered_json check_entry(
       const CheckReport& check,
@@ -342,20 +395,21 @@ namespace scitt_sd::native
         {"detail", detail}};
     }
 
-    ordered_json scitt_entry()
+    ordered_json scitt_entry(const ReceiptReport& receipt)
     {
       return ordered_json{
         {"id", "scitt_receipt"},
-        {"label", "SCITT receipt (official pyscitt)"},
-        {"status", "skipped"},
-        {"detail", SCITT_SKIPPED_DETAIL}};
+        {"label", "Transparency service receipt"},
+        {"status", receipt.status},
+        {"detail", receipt.detail}};
     }
 
     ordered_json verification_document(
       const std::optional<verify::Check>& failed,
       const std::string& reason,
       const std::vector<std::string>& notes,
-      const std::vector<std::string>& details)
+      const std::vector<std::string>& details,
+      const ReceiptReport& receipt = {})
     {
       auto checks = ordered_json::array();
       bool reached = true;
@@ -381,15 +435,14 @@ namespace scitt_sd::native
             details.at(i) :
             std::string(check.passed)));
       }
-      checks.push_back(scitt_entry());
+      checks.push_back(scitt_entry(receipt));
 
+      const bool passed = !failed.has_value() && receipt.status != "fail";
       ordered_json document;
-      document["overall"] = failed.has_value() ? "fail" : "pass";
+      document["overall"] = passed ? "pass" : "fail";
       document["checks"] = std::move(checks);
-      document["detail"] = failed.has_value() ?
-        "One of the four checks this tool owns failed." :
-        "The four checks this tool owns passed. The SCITT receipt is not one "
-        "of them.";
+      document["detail"] =
+        passed ? "Every check this tool owns passed." : "A check did not pass.";
       document["notes"] = notes;
       return document;
     }
@@ -397,16 +450,15 @@ namespace scitt_sd::native
     // A failure describable without the core having looked at the bundle at
     // all, e.g. one that does not decode.
     VerificationOutcome failed_outcome(
-      verify::Check failed, const std::string& reason)
+      verify::Check failed,
+      const std::string& reason,
+      const ReceiptReport& receipt = {})
     {
-      const std::vector<std::string> notes = {
-        "The SCITT receipt was not verified: run the official SCITT verifier "
-        "separately."};
       VerificationOutcome outcome;
       outcome.passed = false;
       outcome.reason = reason;
       outcome.report_json =
-        verification_document(failed, reason, notes, {}).dump(2);
+        verification_document(failed, reason, {}, {}, receipt).dump(2);
       return outcome;
     }
 
@@ -1149,13 +1201,45 @@ namespace scitt_sd::native
         std::string("the MSRC root is not a PEM document: ") + e.what());
     }
 
+    // The service key is the reader's own trust material, exactly as the MSRC
+    // root is: a receipt checked against a key taken from the bundle would
+    // establish nothing.
+    std::optional<ServiceKeyReceiptVerifier> receipt_verifier;
+    if (scitt_trust.has_value())
+    {
+      try
+      {
+        receipt_verifier.emplace(ccf::crypto::Pem(*scitt_trust));
+      }
+      catch (const std::exception& e)
+      {
+        return failed_outcome(
+          verify::Check::Receipt,
+          std::string("the transparency service key is not a PEM document: ") +
+            e.what(),
+          {"fail", "The transparency service key could not be read."});
+      }
+    }
+
     verify::Result result;
     try
     {
-      result = verify::verify_bundle(proof, params);
+      result = receipt_verifier.has_value() ?
+        verify::verify_bundle(proof, params, *receipt_verifier) :
+        verify::verify_bundle(proof, params);
     }
     catch (const verify::VerificationError& e)
     {
+      if (e.check() == verify::Check::Receipt)
+      {
+        VerificationOutcome outcome;
+        outcome.passed = false;
+        outcome.reason = e.reason();
+        outcome.report_json =
+          verification_document(std::nullopt, {}, {}, {}, {"fail", e.reason()})
+            .dump(2);
+        return outcome;
+      }
       return failed_outcome(e.check(), e.reason());
     }
     catch (const std::exception& e)
@@ -1173,16 +1257,29 @@ namespace scitt_sd::native
       std::to_string(proof.disclosures.size()) +
         " disclosures resolved against the registered statement."};
 
-    const std::vector<std::string> notes = {
-      "Issuer: " + result.issuer_did,
-      "Statement subject: " + result.subject,
-      "The SCITT receipt was not verified: run the official SCITT verifier "
-      "separately against the registered statement."};
+    std::vector<std::string> notes = {
+      "Issuer: " + result.issuer_did, "Statement subject: " + result.subject};
+
+    ReceiptReport receipt;
+    if (receipt_verifier.has_value())
+    {
+      receipt.status = "pass";
+      receipt.detail =
+        "The transparency service signed exactly these registered bytes, "
+        "under transaction " +
+        proof.txid + ".";
+    }
+    else
+    {
+      notes.emplace_back(
+        "No transparency service key was supplied, so this says nothing about "
+        "whether the statement was registered.");
+    }
 
     VerificationOutcome outcome;
     outcome.passed = true;
     outcome.report_json =
-      verification_document(std::nullopt, {}, notes, details).dump(2);
+      verification_document(std::nullopt, {}, notes, details, receipt).dump(2);
     return outcome;
   }
 

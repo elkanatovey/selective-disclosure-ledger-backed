@@ -227,8 +227,8 @@ namespace scitt_sd::native
     Bytes transparent_statement;
   };
 
-  // The exact statement bytes a bundle carries, unchanged: they are what the
-  // official SCITT verifier has to be given, and what a receipt is bound to.
+  // The exact statement bytes a bundle carries, unchanged: they are what a
+  // receipt is bound to, and what any independent checker must be given.
   //
   // Throws InvalidInput if the bundle cannot be decoded.
   Statements extract_statements(std::span<const uint8_t> bundle_bytes);
@@ -291,19 +291,19 @@ namespace scitt_sd::native
     std::string reason;
   };
 
-  // Check the four things this API owns: the registered/transparent binding,
-  // the MSRC certificate chain and did:x509, the issuer's signature and the
-  // disclosures. The SCITT receipt is NOT checked here and is always reported
-  // as skipped; the official SCITT verifier owns it.
+  // Check the four things this API owns without trust material: the
+  // registered/transparent binding, the MSRC certificate chain and did:x509,
+  // the issuer's signature and the disclosures.
   //
   // A failed check is an outcome, not an error: the report describes it and
   // `passed` is false. InvalidInput is thrown only when there was nothing to
   // check, so a caller can never mistake one for the other.
   //
-  // `scitt_trust` is accepted for callers that hold the SCITT trust material,
-  // and deliberately not parsed: no receipt is verified here. Only its
-  // presence is checked, so a caller that believes it supplied trust material
-  // is told when it did not.
+  // `scitt_trust` is the transparency service's public key, in PEM, obtained
+  // out of band. Supplying it adds the receipt check: the service must have
+  // signed exactly the registered statement bytes. Omitting it leaves the
+  // receipt unchecked and says so in the report, because a bundle whose
+  // receipt nobody checked shows nothing about registration.
   VerificationOutcome verify_bundle(
     std::span<const uint8_t> bundle_bytes,
     std::span<const uint8_t> msrc_root_pem,

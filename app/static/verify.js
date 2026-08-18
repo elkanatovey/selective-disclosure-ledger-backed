@@ -95,9 +95,11 @@ $("verify").addEventListener("click", async () => {
   }
   $("verify-state").textContent = "Checking...";
   try {
+    const scitt = $("scitt-file").files[0];
     const result = await post("/api/verify", {
       release_b64: b64encode(await release.arrayBuffer()),
       msrc_root_pem: await root.text(),
+      scitt_key_pem: scitt ? await scitt.text() : "",
     });
 
     renderChecks(result.report);

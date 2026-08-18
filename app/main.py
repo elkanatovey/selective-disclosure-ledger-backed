@@ -80,6 +80,7 @@ class SignReleaseRequest(BaseModel):
 class VerifyRequest(BaseModel):
     release_b64: str = Field(min_length=1, max_length=MAX_BUNDLE_B64)
     msrc_root_pem: str = Field(min_length=1, max_length=8192)
+    scitt_key_pem: str = Field(default="", max_length=8192)
 
 
 @dataclass
@@ -289,6 +290,15 @@ def create_app() -> FastAPI:
             headers={"content-disposition": 'attachment; filename="msrc-root.pem"'},
         )
 
+    @app.get("/api/scitt/key")
+    async def scitt_key() -> Response:
+        """The transparency service's key, for checking the receipt."""
+        return Response(
+            content=scitt.public_key,
+            media_type="application/x-pem-file",
+            headers={"content-disposition": 'attachment; filename="scitt-key.pem"'},
+        )
+
     @app.post("/api/msrc/key")
     async def msrc_key(body: DiscloserKeyRequest) -> dict[str, str]:
         """Make MSRC's release key known, so statements can name it in cnf."""
@@ -357,7 +367,9 @@ def create_app() -> FastAPI:
         release = _decode_bundle(body.release_b64)
         try:
             outcome = _native.verify_release(
-                release, body.msrc_root_pem.encode("ascii")
+                release,
+                body.msrc_root_pem.encode("ascii"),
+                body.scitt_key_pem.encode("ascii") or None,
             )
         except (ValueError, UnicodeEncodeError) as error:
             raise HTTPException(400, f"Nothing to check: {error}") from error

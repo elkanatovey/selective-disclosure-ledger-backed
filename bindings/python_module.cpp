@@ -417,7 +417,7 @@ PYBIND11_MODULE(_native, module)
     py::arg("bundle"),
     "Copy the exact statement bytes out of a bundle.\n\n"
     "Returns (registered_statement, transparent_statement) as bytes, "
-    "unchanged: they are what the official SCITT verifier has to be given, "
+    "unchanged: they are what a receipt is bound to, "
     "and what a receipt is bound to.");
 
   module.def(
@@ -457,14 +457,14 @@ PYBIND11_MODULE(_native, module)
     py::arg("bundle"),
     py::arg("msrc_root"),
     py::arg("scitt_trust") = py::none(),
-    "Check the four things this API owns.\n\n"
+    "Check a proof bundle.\n\n"
     "The registered/transparent binding, the MSRC certificate chain and "
     "did:x509, the issuer signature and the disclosures, against the "
     "separately supplied MSRC root. Returns the report as a JSON document, as "
     "text, whether verification passed or failed; its 'overall' member says "
     "which.\n\n"
-    "The SCITT receipt is NOT checked and is always reported as skipped: the "
-    "official SCITT verifier owns it. `scitt_trust` is accepted for callers "
-    "that hold that trust material and is deliberately never parsed; only its "
-    "presence is checked.");
+    "`scitt_trust` is the transparency service's public key, in PEM. Supply "
+    "it to add the receipt check: the service must have signed exactly the "
+    "registered statement bytes. Omit it and the receipt is reported as "
+    "unchecked, which means nothing here shows the statement was registered.");
 }

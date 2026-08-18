@@ -83,6 +83,8 @@ class MockScitt:
 
     def __init__(self) -> None:
         self._key = _native.generate_private_key()
+        # A reader needs this to check any receipt this service issued.
+        self.public_key: bytes = _native.derive_public_key(self._key)
         self._sequence = 0
 
     def register(self, statement: bytes) -> tuple[str, bytes]:

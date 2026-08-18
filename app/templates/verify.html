@@ -24,6 +24,12 @@
       </label>
       <input type="file" id="root-file" accept=".pem,.crt,.cer" />
 
+      <label for="scitt-file">
+        Transparency service key (PEM). Without it the receipt cannot be
+        checked, and nothing shows the statement was ever registered.
+      </label>
+      <input type="file" id="scitt-file" accept=".pem" />
+
       <button id="verify">Verify</button>
       <p id="verify-state" class="state">Nothing checked yet.</p>
     </section>

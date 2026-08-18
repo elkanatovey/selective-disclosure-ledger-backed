@@ -789,3 +789,57 @@ TEST(VerifyRelease, RefusesSomethingThatIsNotARelease)
     verify_release(released.bundle, released.held.root.certificate);
   EXPECT_FALSE(outcome.passed);
 }
+
+TEST(VerifyRelease, ChecksTheReceiptAgainstTheServiceKey)
+{
+  const auto held = hold_a_key();
+  const auto ledger_key = generate_private_key();
+  const auto ledger_public = derive_public_key(ledger_key);
+  const auto discloser_key = generate_private_key();
+
+  const auto prepared = prepare_statement(
+    report_document(),
+    held.public_key,
+    held.leaf_cert,
+    held.root.certificate,
+    derive_public_key(discloser_key));
+  const auto statement = attach_signature(
+    prepared.protected_header,
+    prepared.payload,
+    sign_detached(held.private_key, prepared.to_be_signed));
+  const auto registration = mock_register_statement(statement, ledger_key);
+  const auto bundle = create_bundle(
+                        statement,
+                        registration.transparent_statement,
+                        prepared.disclosure_set,
+                        "https://transparency.example",
+                        "2.14",
+                        1700000100)
+                        .bundle;
+  const auto for_signing =
+    prepare_release(bundle, derive_public_key(discloser_key));
+  const auto release = attach_signature(
+    for_signing.protected_header,
+    for_signing.payload,
+    sign_detached(discloser_key, for_signing.to_be_signed));
+
+  const std::optional<std::span<const uint8_t>> trusted{ledger_public};
+  const auto outcome = verify_release(release, held.root.certificate, trusted);
+  EXPECT_TRUE(outcome.passed) << outcome.reason;
+  EXPECT_EQ(check_status(outcome.report_json, "scitt_receipt"), "pass");
+
+  // A different service key must not vouch for this statement.
+  const auto stranger = derive_public_key(generate_private_key());
+  const std::optional<std::span<const uint8_t>> wrong{stranger};
+  const auto refused = verify_release(release, held.root.certificate, wrong);
+  EXPECT_FALSE(refused.passed);
+  EXPECT_EQ(check_status(refused.report_json, "scitt_receipt"), "fail");
+}
+
+TEST(VerifyRelease, LeavesTheReceiptUncheckedWithoutAServiceKey)
+{
+  const auto released = release_everything();
+  const auto outcome =
+    verify_release(released.release, released.held.root.certificate);
+  EXPECT_EQ(check_status(outcome.report_json, "scitt_receipt"), "skipped");
+}
