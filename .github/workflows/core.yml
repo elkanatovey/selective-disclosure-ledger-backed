@@ -88,7 +88,8 @@ jobs:
         id: ccf
         run: |
           set -euo pipefail
-          config=$(rpm -ql ccf_devel | grep -m1 '/ccf-config\.cmake$')
+          rpm -ql ccf_devel > /tmp/ccf-devel-files
+          config=$(sed -n '/\/ccf-config\.cmake$/{p;q;}' /tmp/ccf-devel-files)
           test -n "$config"
           echo "prefix=$(dirname "$(dirname "$config")")" >> "$GITHUB_OUTPUT"
       - name: Build and test

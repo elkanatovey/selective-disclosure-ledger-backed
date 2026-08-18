@@ -191,7 +191,10 @@ build_cli() {
         docker build --tag "${IMAGE_TAG}" \
             --build-arg "CCF_VERSION=${CCF_VERSION}" \
             "${REPO_ROOT}" >"${LOG_DIR}/image-build.log" 2>&1 ||
-            die "building ${IMAGE_TAG} failed. See ${LOG_DIR}/image-build.log."
+            {
+                tail -n 80 "${LOG_DIR}/image-build.log" >&2 || true
+                die "building ${IMAGE_TAG} failed. See ${LOG_DIR}/image-build.log."
+            }
         log "extracting the C++ tool from ${IMAGE_TAG}"
         mkdir -p "${REPO_ROOT}/build"
         local helper
