@@ -54,6 +54,19 @@ class SubmitRequest(BaseModel):
     signature_b64: str = Field(min_length=1, max_length=256)
 
 
+MAX_BUNDLE_B64 = 8 * 1024 * 1024
+
+
+class InspectRequest(BaseModel):
+    bundle_b64: str = Field(min_length=1, max_length=MAX_BUNDLE_B64)
+
+
+class ReleaseRequest(BaseModel):
+    bundle_b64: str = Field(min_length=1, max_length=MAX_BUNDLE_B64)
+    redact_fields: list[str] = Field(default_factory=list, max_length=16)
+    redact_body_chunks: list[int] = Field(default_factory=list, max_length=8192)
+
+
 @dataclass
 class Prepared:
     """What is held between handing out the bytes and getting the signature."""
@@ -73,6 +86,13 @@ def _decode_signature(encoded: str) -> bytes:
     if len(signature) != ES256_SIGNATURE_BYTES:
         raise HTTPException(400, "The signature must be 64 bytes of raw r||s.")
     return signature
+
+
+def _decode_bundle(encoded: str) -> bytes:
+    try:
+        return base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as error:
+        raise HTTPException(400, "The bundle is not valid base64.") from error
 
 
 def create_app() -> FastAPI:
@@ -220,5 +240,42 @@ def create_app() -> FastAPI:
                 )
             },
         )
+
+    @app.get("/msrc", response_class=HTMLResponse)
+    async def msrc_page(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(request, "msrc.html", {})
+
+    @app.post("/api/msrc/inspect")
+    async def msrc_inspect(body: InspectRequest) -> dict[str, object]:
+        """Read a bundle MSRC holds, so it can choose what to withhold."""
+        bundle = _decode_bundle(body.bundle_b64)
+        try:
+            return {"inspection": json.loads(_native.inspect_bundle(bundle))}
+        except ValueError as error:
+            raise HTTPException(
+                400, f"That bundle could not be read: {error}"
+            ) from error
+
+    @app.post("/api/msrc/release")
+    async def msrc_release(body: ReleaseRequest) -> dict[str, object]:
+        """Drop the selected disclosures, then sign what is left."""
+        bundle = _decode_bundle(body.bundle_b64)
+        selection = json.dumps(
+            {
+                "version": 1,
+                "redact_fields": body.redact_fields,
+                "redact_body_chunks": body.redact_body_chunks,
+            }
+        )
+        try:
+            presented = _native.present_bundle(bundle, selection)
+            release = msrc.sign_release(presented)
+        except ValueError as error:
+            raise HTTPException(400, f"The redaction was refused: {error}") from error
+        return {
+            "release_b64": base64.b64encode(release).decode(),
+            "presented_bytes": len(presented),
+            "release_bytes": len(release),
+        }
 
     return app

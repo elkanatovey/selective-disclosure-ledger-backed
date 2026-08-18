@@ -46,8 +46,47 @@ textarea {
   padding: 0.3rem;
 }
 
+input[type="checkbox"],
+input[type="file"] {
+  width: auto;
+}
+
 button {
   margin-top: 1rem;
   font: inherit;
   padding: 0.4rem 0.8rem;
+}
+
+.field {
+  display: block;
+  margin: 0.2rem 0;
+  font-size: 0.9rem;
+}
+
+.body {
+  font-family: ui-monospace, monospace;
+  line-height: 2;
+  word-break: break-all;
+}
+
+.chunk {
+  cursor: pointer;
+  border-bottom: 1px dotted #bbb;
+}
+
+.chunk:hover {
+  background: #eef;
+}
+
+/* A withheld disclosure: the text is absent from the export, not covered. */
+.bar {
+  background: #000;
+  color: transparent;
+  cursor: pointer;
+  white-space: pre;
+}
+
+.hint {
+  color: #444;
+  font-size: 0.85rem;
 }

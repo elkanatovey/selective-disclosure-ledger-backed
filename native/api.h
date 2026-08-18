@@ -256,6 +256,21 @@ namespace scitt_sd::native
   PresentedBundle present_bundle(
     std::span<const uint8_t> bundle_bytes, std::string_view selection_json);
 
+  // Sign a presentation with the private key whose public half the statement
+  // named in its `cnf` claim. The payload is the presented bundle verbatim, so
+  // the signature covers exactly what is being released, and a verifier that
+  // reads `cnf` out of the enclosed statement can tell who released it.
+  //
+  // Nothing here checks that the key matches `cnf`: that is the verifier's
+  // question, and answering it here would not make the signature any more
+  // binding.
+  //
+  // Throws InvalidInput if the bundle is empty or oversized, or the key is not
+  // an EC private key on a usable curve.
+  Bytes sign_release(
+    std::span<const uint8_t> bundle_bytes,
+    std::span<const uint8_t> private_key_pem);
+
   struct VerificationOutcome
   {
     // Whether the four checks this API owns all passed. The SCITT receipt is

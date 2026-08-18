@@ -74,6 +74,11 @@ class MockMsrc:
         self.submissions[record.submission_id] = record
         return record
 
+    def sign_release(self, bundle: bytes) -> bytes:
+        """Sign a redacted presentation with the key named in cnf."""
+        release: bytes = _native.sign_release(bundle, self._disclosure_key)
+        return release
+
 
 class MockScitt:
     """Signs a receipt over the exact registered statement. Not a ledger."""

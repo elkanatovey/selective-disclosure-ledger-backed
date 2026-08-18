@@ -1,0 +1,42 @@
+<!--
+  Copyright (c) Microsoft Corporation.
+  Licensed under the MIT License.
+-->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MSRC</title>
+    <link rel="stylesheet" href="/static/researcher.css" />
+  </head>
+  <body>
+    <h1>Disclosure Release</h1>
+
+    <section>
+      <h2>1. Load a bundle</h2>
+      <input type="file" id="bundle-file" accept=".cbor" />
+      <button id="load">Load</button>
+      <p id="load-state" class="state">No bundle loaded.</p>
+    </section>
+
+    <section id="editor" hidden>
+      <h2>2. Choose what to withhold</h2>
+      <div id="fields"></div>
+      <h3>Body</h3>
+      <p id="body-text" class="body"></p>
+      <p class="hint">
+        Click a block to withhold it. Withheld text is dropped from the
+        exported bundle, not hidden by the viewer.
+      </p>
+    </section>
+
+    <section id="export-section" hidden>
+      <h2>3. Sign and export</h2>
+      <button id="export">Sign and export</button>
+      <p id="export-state" class="state"></p>
+    </section>
+
+    <script src="/static/msrc.js"></script>
+  </body>
+</html>

@@ -271,6 +271,21 @@ PYBIND11_MODULE(_native, module)
     "Returns the exact bytes a transparency service registers.");
 
   module.def(
+    "sign_release",
+    [](const py::bytes& bundle, const py::bytes& private_key) {
+      const auto bundle_span = as_span(bundle);
+      const auto key_span = as_span(private_key);
+      const auto release = without_gil(
+        [&] { return native::sign_release(bundle_span, key_span); });
+      return to_bytes(release);
+    },
+    py::arg("bundle"),
+    py::arg("private_key"),
+    "Sign a presentation with the key the statement named in cnf.\n\n"
+    "The payload is the presented bundle verbatim, so the signature covers "
+    "exactly what is being released. Returns the COSE_Sign1 as bytes.");
+
+  module.def(
     "mock_register_statement",
     [](const py::bytes& registered_statement, const py::bytes& ledger_key) {
       const auto statement_span = as_span(registered_statement);

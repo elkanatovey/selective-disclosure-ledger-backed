@@ -873,6 +873,31 @@ namespace scitt_sd::native
     }
   }
 
+  Bytes sign_release(
+    std::span<const uint8_t> bundle_bytes,
+    std::span<const uint8_t> private_key_pem)
+  {
+    require_size(
+      bundle_bytes.size(), limits::MAX_BUNDLE_BYTES, "the proof bundle");
+    if (bundle_bytes.empty())
+    {
+      throw InvalidInput("the proof bundle is empty");
+    }
+    const auto key = to_key(private_key_pem, "the release private key");
+
+    try
+    {
+      const auto alg = sdcwt::cose_es_alg_for_curve(key->get_curve_id());
+      return sdcwt::sign_cose_sign1(
+        *key, sdcwt::encode_protected_header(alg), bundle_bytes);
+    }
+    catch (const std::exception& e)
+    {
+      throw InvalidInput(
+        std::string("could not sign the release: ") + e.what());
+    }
+  }
+
   // --- demo transparency service ---------------------------------------------
 
   MockRegistration mock_register_statement(
