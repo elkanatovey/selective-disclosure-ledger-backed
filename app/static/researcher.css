@@ -111,6 +111,16 @@ button {
   border-color: #e90;
 }
 
+.check.skipped {
+  border-color: #e90;
+}
+
+/* A summary that passed but left something unchecked. */
+.state.warn {
+  color: #a60;
+  font-weight: 700;
+}
+
 ul {
   padding-left: 0;
 }

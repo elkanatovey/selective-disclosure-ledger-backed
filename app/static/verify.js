@@ -88,6 +88,7 @@ function renderContents(contents) {
 $("verify").addEventListener("click", async () => {
   const release = $("release-file").files[0];
   const root = $("root-file").files[0];
+  $("verify-state").className = "state";
   if (!release || !root) {
     $("verify-state").textContent =
       "Choose both a release and the MSRC root certificate.";
@@ -115,10 +116,26 @@ $("verify").addEventListener("click", async () => {
     const attribution = result.attributable
       ? ""
       : " Nobody is named as the discloser, so this release is unattributable.";
-    $("verify-state").textContent = result.passed
-      ? `Every check this tool owns passed.${attribution}`
-      : `Failed: ${result.report.detail ?? "a check did not pass"}.${attribution}`;
+
+    // A skipped receipt is the one omission that could be mistaken for a pass,
+    // since the checks that did run all passed.
+    const receipt = result.report.checks.find((c) => c.id === "scitt_receipt");
+    const unchecked = receipt?.status === "skipped";
+
+    const state = $("verify-state");
+    state.className = `state${unchecked && result.passed ? " warn" : ""}`;
+    if (!result.passed) {
+      state.textContent = `Failed: ${result.report.detail ?? "a check did not pass"}.${attribution}`;
+    } else if (unchecked) {
+      state.textContent =
+        "The checks that ran passed, but the transparency service receipt was " +
+        "NOT checked: nothing here shows this statement was ever registered." +
+        attribution;
+    } else {
+      state.textContent = `Every check passed, the transparency service receipt included.${attribution}`;
+    }
   } catch (error) {
+    $("verify-state").className = "state";
     $("verify-state").textContent = `Could not check that: ${error.message}`;
     $("checks-section").hidden = true;
     $("contents-section").hidden = true;
