@@ -12,7 +12,10 @@
 set -euo pipefail
 
 ROOT=$(git rev-parse --show-toplevel)
-LEDGER="$ROOT/third_party/scitt-ccf-ledger"
+LEDGER=${LEDGER:-$ROOT/third_party/scitt-ccf-ledger}
+LEDGER_URL=${LEDGER_URL:-https://github.com/microsoft/scitt-ccf-ledger}
+# Pinned: the receipt format this demo verifies is the one this commit emits.
+LEDGER_SHA=${LEDGER_SHA:-5d471384ef7808cb0208ac3d141b4910b83cb48f}
 CCF_PREFIX=${CCF_PREFIX:-/opt/ccf}
 WORKSPACE=${WORKSPACE:-$ROOT/.ledger}
 # Pin registration to one issuer by exporting the did:x509 mock MSRC prints on
@@ -25,10 +28,20 @@ COMMON="$WORKSPACE/workspace/sandbox_common"
 log() { printf '[ledger] %s\n' "$*" >&2; }
 
 [ -d "$CCF_PREFIX" ] || { log "no CCF install at $CCF_PREFIX"; exit 2; }
-[ -f "$LEDGER/CMakeLists.txt" ] || {
-  log "submodule missing: git submodule update --init third_party/scitt-ccf-ledger"
-  exit 2
-}
+
+# --- fetch the application ---------------------------------------------------
+
+# The checkout may be a worktree, so ask git rather than looking for a .git dir.
+if ! git -C "$LEDGER" rev-parse --git-dir >/dev/null 2>&1; then
+  log "cloning the transparency service at $LEDGER_SHA"
+  mkdir -p "$(dirname "$LEDGER")"
+  git clone "$LEDGER_URL" "$LEDGER"
+fi
+if [ "$(git -C "$LEDGER" rev-parse HEAD)" != "$LEDGER_SHA" ]; then
+  log "checking out $LEDGER_SHA"
+  git -C "$LEDGER" fetch --quiet origin "$LEDGER_SHA" 2>/dev/null || git -C "$LEDGER" fetch --quiet origin
+  git -C "$LEDGER" checkout --quiet "$LEDGER_SHA"
+fi
 
 # --- build the application ---------------------------------------------------
 
@@ -66,11 +79,21 @@ log "starting the transparency service on https://127.0.0.1:8000"
 SANDBOX=$!
 trap 'kill $SANDBOX 2>/dev/null || true' EXIT INT TERM
 
-for _ in $(seq 1 120); do
-  [ -f "$COMMON/service_cert.pem" ] && [ -f "$COMMON/member0_privk.pem" ] && break
+# The sandbox writes its keys and certificates before the node is listening, so
+# readiness means an answered request, not a file on disk.
+for _ in $(seq 1 180); do
+  if [ -f "$COMMON/service_cert.pem" ] && [ -f "$COMMON/member0_privk.pem" ] &&
+    curl -sf --cacert "$COMMON/service_cert.pem" \
+      "https://127.0.0.1:8000/app/version" >/dev/null 2>&1; then
+    break
+  fi
   sleep 1
 done
-[ -f "$COMMON/service_cert.pem" ] || { log "the service did not start"; exit 1; }
+curl -sf --cacert "$COMMON/service_cert.pem" \
+  "https://127.0.0.1:8000/app/version" >/dev/null 2>&1 || {
+  log "the service did not start"
+  exit 1
+}
 
 # --- configuration -----------------------------------------------------------
 

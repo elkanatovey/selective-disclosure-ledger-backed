@@ -33,11 +33,10 @@ No CBOR or cryptography is implemented in Python.
 
 Needs a CCF 7.0.10 install for `ccfcrypto` and `ccf::cbor`.
 
-Start the transparency service. The first run builds it from the pinned submodule, which
-takes a while.
+Start the transparency service. The first run clones and builds it from the pinned
+upstream commit, which takes a while.
 
 ```bash
-git submodule update --init third_party/scitt-ccf-ledger
 scripts/ledger.sh
 ```
 

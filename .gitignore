@@ -2,6 +2,7 @@
 # Licensed under the MIT License.
 
 .coverage
+.ledger/
 .mypy_cache/
 .ruff_cache/
 .venv/

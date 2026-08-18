@@ -86,9 +86,15 @@ RESP=$(curlg -X POST "$CCF_URL/gov/members/proposals:create?$API" \
 
 read -r PID MID <<<"$(echo "$RESP" | "$VENV/python" -c '
 import json, sys
-r = json.load(sys.stdin)
-print(r["proposalId"], r["proposerId"])
-')"
+try:
+    r = json.load(sys.stdin)
+    print(r["proposalId"], r["proposerId"])
+except Exception:
+    sys.exit(1)
+')" || {
+  echo "the configuration proposal was refused: $RESP" >&2
+  exit 1
+}
 
 echo '{"ballot": "export function vote (rawProposal, proposerId) { return true; }"}' \
   > "$WORK/ballot.json"
