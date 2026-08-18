@@ -72,14 +72,17 @@ RUN cmake -S . -B build -GNinja \
     cmake --install build --component tool 2>/dev/null || \
     (mkdir -p /opt/scitt-sd/bin && cp build/scitt-sd /opt/scitt-sd/bin/scitt-sd)
 
-# Collect the non-system shared libraries the tool needs, so that the runtime
-# stage and demo/run.sh can both use the same binary.
+# Collect only the OpenSSL shared libraries the tool needs. glibc, libstdc++,
+# and the dynamic loader must come from the host/runtime distribution; copying
+# Azure Linux versions beside the binary makes an extracted tool crash on an
+# Ubuntu GitHub runner.
 RUN mkdir -p /opt/scitt-sd/lib && \
-    ldd /opt/scitt-sd/bin/scitt-sd \
-    | awk '/=> \//{print $3}' \
-    | grep -Ev '^/lib64/(ld-linux|libc|libm|libdl|libpthread|librt)' \
-    | sort -u \
-    | xargs -r -I{} cp -L {} /opt/scitt-sd/lib/ && \
+    ldd /opt/scitt-sd/bin/scitt-sd > /tmp/scitt-sd-ldd && \
+    ! grep -q 'not found' /tmp/scitt-sd-ldd && \
+    awk '$1 ~ /^lib(crypto|ssl)\.so/ && $3 ~ /^\// {print $3}' \
+      /tmp/scitt-sd-ldd > /tmp/scitt-sd-libs && \
+    while IFS= read -r library; do cp -L "${library}" /opt/scitt-sd/lib/; done \
+      < /tmp/scitt-sd-libs && \
     /opt/scitt-sd/bin/scitt-sd --version
 
 FROM base

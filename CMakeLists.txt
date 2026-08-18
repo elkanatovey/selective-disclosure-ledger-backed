@@ -92,7 +92,7 @@ target_include_directories(
          ${CCF_INCLUDE_ROOT}/include/3rdparty
 )
 
-target_link_libraries(scitt_sd_core PUBLIC ccfcrypto ccf)
+target_link_libraries(scitt_sd_core PUBLIC ccfcrypto)
 
 target_compile_options(
   scitt_sd_core PRIVATE -Wall -Wextra -Werror -Wshadow -Wundef
