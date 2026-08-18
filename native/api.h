@@ -164,7 +164,7 @@ namespace scitt_sd::native
     std::span<const uint8_t> payload,
     std::span<const uint8_t> signature);
 
-  // --- demo transparency service ---------------------------------------------
+  // --- test fixtures ---------------------------------------------------------
 
   struct MockRegistration
   {
@@ -172,15 +172,14 @@ namespace scitt_sd::native
     Bytes receipt; // the receipt on its own
   };
 
-  // Register a statement with the demo's stand-in for a transparency service:
-  // sign a receipt over the exact registered statement bytes and attach it to
-  // that statement's unprotected header (394), leaving the issuer's signature
-  // intact.
+  // Attach an opaque receipt to a statement's unprotected header (394),
+  // leaving the issuer's signature intact.
   //
-  // This is NOT a transparency service. There is no append-only log, no
-  // inclusion proof and no consistency proof, so a receipt from here proves
-  // only that this key saw these bytes. It exists so the demo can run the
-  // whole submission shape without a ledger.
+  // This is NOT a transparency service, and the receipt it produces is NOT a
+  // SCITT receipt: there is no log, no inclusion proof and no signature that
+  // any receipt verifier will accept. It exists only so that tests can build a
+  // structurally complete bundle without a ledger. Anything that needs a
+  // receipt to actually verify must register with a real transparency service.
   //
   // Throws InvalidInput if the statement is empty or oversized, if the key is
   // not usable, or if the receipt cannot be attached.
@@ -299,11 +298,12 @@ namespace scitt_sd::native
   // `passed` is false. InvalidInput is thrown only when there was nothing to
   // check, so a caller can never mistake one for the other.
   //
-  // `scitt_trust` is the transparency service's public key, in PEM, obtained
-  // out of band. Supplying it adds the receipt check: the service must have
-  // signed exactly the registered statement bytes. Omitting it leaves the
-  // receipt unchecked and says so in the report, because a bundle whose
-  // receipt nobody checked shows nothing about registration.
+  // `scitt_trust` is the transparency service's certificate, in PEM, obtained
+  // out of band. Supplying it adds the receipt check: the registered
+  // statement's digest must be the leaf of an inclusion proof whose root that
+  // service signed. Omitting it leaves the receipt unchecked and says so in
+  // the report, because a bundle whose receipt nobody checked shows nothing
+  // about registration.
   VerificationOutcome verify_bundle(
     std::span<const uint8_t> bundle_bytes,
     std::span<const uint8_t> msrc_root_pem,

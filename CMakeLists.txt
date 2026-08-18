@@ -79,6 +79,7 @@ add_library(
   ${CMAKE_CURRENT_SOURCE_DIR}/core/report.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/core/bundle.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/core/verify.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/core/ccf_receipt.cpp
 )
 
 # Sources include their own headers as "core/...", so the repository root is the

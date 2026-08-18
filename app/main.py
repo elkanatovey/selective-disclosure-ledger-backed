@@ -7,8 +7,8 @@ The browser generates an ephemeral P-256 key, keeps it, and signs exactly one
 thing: the bytes this backend hands it. The backend never sees a private key.
 
 One submission runs three ordered steps once the signature arrives: assemble
-the registered statement, register it with the mock transparency service, then
-send the full bundle (disclosures and receipt) to the mock MSRC.
+the registered statement, register it with the transparency service, then send
+the full bundle (disclosures and receipt) to the mock MSRC.
 """
 
 from __future__ import annotations
@@ -27,10 +27,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from .mocks import MockMsrc, MockScitt, evict
+from .mocks import MockMsrc, evict
+from .scitt import ScittError, from_environment
 
 HERE = Path(__file__).parent
-SCITT_URL = "https://transparency.example"
 ES256_SIGNATURE_BYTES = 64
 
 
@@ -80,7 +80,7 @@ class SignReleaseRequest(BaseModel):
 class VerifyRequest(BaseModel):
     release_b64: str = Field(min_length=1, max_length=MAX_BUNDLE_B64)
     msrc_root_pem: str = Field(min_length=1, max_length=8192)
-    scitt_key_pem: str = Field(default="", max_length=8192)
+    scitt_cert_pem: str = Field(default="", max_length=8192)
 
 
 @dataclass
@@ -125,7 +125,7 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
     msrc = MockMsrc()
-    scitt = MockScitt()
+    scitt = from_environment()
     pending: dict[str, Prepared] = {}
     pending_releases: dict[str, PreparedRelease] = {}
 
@@ -217,11 +217,19 @@ def create_app() -> FastAPI:
             }
         )
 
-        txid, transparent = scitt.register(statement)
+        try:
+            registration = scitt.register(statement)
+        except ScittError as error:
+            raise HTTPException(502, str(error)) from error
+        txid = registration.txid
         stages.append({"name": "register", "detail": f"Transaction {txid}."})
 
         bundle = _native.create_bundle(
-            statement, transparent, held.disclosures, SCITT_URL, txid
+            statement,
+            registration.transparent_statement,
+            held.disclosures,
+            scitt.url,
+            txid,
         )
         stages.append({"name": "bundle", "detail": f"Bundle is {len(bundle)} bytes."})
 
@@ -232,7 +240,7 @@ def create_app() -> FastAPI:
         return {
             "submission_id": received.submission_id,
             "txid": txid,
-            "scitt_url": SCITT_URL,
+            "scitt_url": scitt.url,
             "bundle_bytes": len(bundle),
             "stages": stages,
         }
@@ -290,13 +298,13 @@ def create_app() -> FastAPI:
             headers={"content-disposition": 'attachment; filename="msrc-root.pem"'},
         )
 
-    @app.get("/api/scitt/key")
-    async def scitt_key() -> Response:
-        """The transparency service's key, for checking the receipt."""
+    @app.get("/api/scitt/certificate")
+    async def scitt_certificate() -> Response:
+        """The transparency service's certificate, for checking the receipt."""
         return Response(
-            content=scitt.public_key,
+            content=scitt.service_cert,
             media_type="application/x-pem-file",
-            headers={"content-disposition": 'attachment; filename="scitt-key.pem"'},
+            headers={"content-disposition": 'attachment; filename="scitt-service.pem"'},
         )
 
     @app.post("/api/msrc/key")
@@ -369,7 +377,7 @@ def create_app() -> FastAPI:
             outcome = _native.verify_release(
                 release,
                 body.msrc_root_pem.encode("ascii"),
-                body.scitt_key_pem.encode("ascii") or None,
+                body.scitt_cert_pem.encode("ascii") or None,
             )
         except (ValueError, UnicodeEncodeError) as error:
             raise HTTPException(400, f"Nothing to check: {error}") from error

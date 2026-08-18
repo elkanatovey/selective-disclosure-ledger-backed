@@ -1,11 +1,12 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-"""In-process stand-ins for MSRC and a SCITT transparency service.
+"""An in-process stand-in for MSRC.
 
-Neither is real. The mock ledger has no log, no inclusion proof and no
-consistency proof: it signs a receipt over the exact registered statement so
-the demo carries the right shape without running a ledger.
+MSRC is mocked because this demo is about what a researcher and MSRC do with a
+statement, not about how MSRC runs a PKI. The transparency service is NOT
+mocked: statements are registered with a real one, because a receipt nobody
+could check would make the whole exercise pointless.
 """
 
 from __future__ import annotations
@@ -76,23 +77,6 @@ class MockMsrc:
         evict(self.submissions)
         self.submissions[record.submission_id] = record
         return record
-
-
-class MockScitt:
-    """Signs a receipt over the exact registered statement. Not a ledger."""
-
-    def __init__(self) -> None:
-        self._key = _native.generate_private_key()
-        # A reader needs this to check any receipt this service issued.
-        self.public_key: bytes = _native.derive_public_key(self._key)
-        self._sequence = 0
-
-    def register(self, statement: bytes) -> tuple[str, bytes]:
-        """Return a transaction id and the statement with its receipt."""
-        self._sequence += 1
-        txid = f"2.{self._sequence}"
-        registered = _native.mock_register_statement(statement, self._key)
-        return txid, registered["transparent_statement"]
 
 
 def evict(records: dict[str, _Record]) -> None:

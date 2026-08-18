@@ -13,7 +13,9 @@
 
 #include "native/api.h"
 
+#include "core/cose.h"
 #include "core/profile.h"
+#include "core/sd_cwt.h"
 #include "core/text_chunks.h"
 #include "native/identity.h"
 #include "tests/core/test_support.h"
@@ -21,6 +23,7 @@
 #include <ccf/crypto/ec_key_pair.h>
 #include <ccf/crypto/ecdsa.h>
 #include <ccf/crypto/hash_provider.h>
+#include <ccf/crypto/sha256.h>
 #include <ccf/crypto/verifier.h>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
@@ -135,6 +138,97 @@ namespace
       to_be_signed.data(), to_be_signed.size(), md);
     const auto der = key->sign_hash(digest.data(), digest.size());
     return ccf::crypto::ecdsa_sig_der_to_p1363(der, curve);
+  }
+
+  std::vector<uint8_t> digest_of(std::span<const uint8_t> data)
+  {
+    const auto hash = ccf::crypto::sha256(data);
+    return {hash.begin(), hash.end()};
+  }
+
+  // One step of the CCF Merkle tree.
+  std::vector<uint8_t> join(
+    std::span<const uint8_t> left, std::span<const uint8_t> right)
+  {
+    std::vector<uint8_t> preimage;
+    preimage.insert(preimage.end(), left.begin(), left.end());
+    preimage.insert(preimage.end(), right.begin(), right.end());
+    return digest_of(preimage);
+  }
+
+  // A receipt shaped exactly as a CCF transparency service issues one: the
+  // statement's digest is the leaf's claims digest, `path` leads from that
+  // leaf to the root, and the service signs the root with a detached payload.
+  // Building it here rather than mocking the service is what lets the tests
+  // corrupt one part at a time.
+  Bytes ccf_receipt(
+    const Bytes& service_key_pem,
+    const Bytes& statement,
+    const std::string& txid,
+    const std::vector<std::pair<bool, std::vector<uint8_t>>>& path = {},
+    int64_t vds = 2)
+  {
+    namespace cbor = ccf::cbor;
+
+    const std::vector<uint8_t> write_set(32, 0x11);
+    const std::string commit_evidence = "ce:" + txid + ":test";
+    const auto claims = digest_of(statement);
+
+    std::vector<uint8_t> leaf_preimage;
+    leaf_preimage.insert(
+      leaf_preimage.end(), write_set.begin(), write_set.end());
+    const auto evidence_digest = digest_of(std::span<const uint8_t>{
+      reinterpret_cast<const uint8_t*>(commit_evidence.data()),
+      commit_evidence.size()});
+    leaf_preimage.insert(
+      leaf_preimage.end(), evidence_digest.begin(), evidence_digest.end());
+    leaf_preimage.insert(leaf_preimage.end(), claims.begin(), claims.end());
+
+    auto root = digest_of(leaf_preimage);
+    std::vector<cbor::Value> path_items;
+    path_items.reserve(path.size());
+    for (const auto& [on_the_left, sibling] : path)
+    {
+      root = on_the_left ? join(sibling, root) : join(root, sibling);
+      path_items.push_back(cbor::make_array(
+        {cbor::make_simple(cbor::boolean_to_simple(on_the_left)),
+         cbor::make_bytes(sibling)}));
+    }
+
+    std::vector<cbor::MapItem> proof_items;
+    proof_items.emplace_back(
+      cbor::make_signed(1),
+      cbor::make_array(
+        {cbor::make_bytes(write_set),
+         cbor::make_string(commit_evidence),
+         cbor::make_bytes(claims)}));
+    proof_items.emplace_back(
+      cbor::make_signed(2), cbor::make_array(std::move(path_items)));
+    const auto proof = cbor::serialize(cbor::make_map(std::move(proof_items)));
+
+    const auto key =
+      ccf::crypto::make_ec_key_pair(ccf::crypto::Pem(service_key_pem));
+    sdcwt::CborValue ccf_claims = sdcwt::CborValue::Map({});
+    ccf_claims.map_put(std::string("txid"), sdcwt::CborValue::Text(txid));
+    const auto phdr = sdcwt::encode_protected_header(
+      sdcwt::cose_es_alg_for_curve(key->get_curve_id()),
+      {{int64_t{395}, sdcwt::CborValue::Int(vds)},
+       {std::string("ccf.v1"), ccf_claims}});
+
+    const auto signature =
+      sign_detached(service_key_pem, sdcwt::cose_to_be_signed(phdr, root));
+
+    return cbor::serialize(cbor::make_tagged(
+      18,
+      cbor::make_array(
+        {cbor::make_bytes(phdr),
+         cbor::make_map(
+           {{cbor::make_signed(396),
+             cbor::make_map(
+               {{cbor::make_signed(-1),
+                 cbor::make_array({cbor::make_bytes(proof)})}})}}),
+         cbor::make_simple(cbor::SimpleValue::Null),
+         cbor::make_bytes(signature)})));
   }
 
   struct CnfKey
@@ -790,53 +884,164 @@ TEST(VerifyRelease, RefusesSomethingThatIsNotARelease)
   EXPECT_FALSE(outcome.passed);
 }
 
-TEST(VerifyRelease, ChecksTheReceiptAgainstTheServiceKey)
+namespace
 {
-  const auto held = hold_a_key();
-  const auto ledger_key = generate_private_key();
-  const auto ledger_public = derive_public_key(ledger_key);
-  const auto discloser_key = generate_private_key();
+  // A statement naming a discloser, with a real CCF-shaped receipt attached,
+  // bundled and then released by that discloser.
+  struct Registered
+  {
+    Held held;
+    Bytes discloser_key;
+    Bytes statement;
+    Bytes disclosures;
+    Bytes release;
+  };
 
-  const auto prepared = prepare_statement(
-    report_document(),
-    held.public_key,
-    held.leaf_cert,
-    held.root.certificate,
-    derive_public_key(discloser_key));
-  const auto statement = attach_signature(
-    prepared.protected_header,
-    prepared.payload,
-    sign_detached(held.private_key, prepared.to_be_signed));
-  const auto registration = mock_register_statement(statement, ledger_key);
+  Registered register_and_release(
+    const Bytes& service_key,
+    const std::vector<std::pair<bool, std::vector<uint8_t>>>& path = {})
+  {
+    Registered out;
+    out.held = hold_a_key();
+    out.discloser_key = generate_private_key();
+    const auto discloser_public = derive_public_key(out.discloser_key);
+
+    const auto prepared = prepare_statement(
+      report_document(),
+      out.held.public_key,
+      out.held.leaf_cert,
+      out.held.root.certificate,
+      discloser_public);
+    out.statement = attach_signature(
+      prepared.protected_header,
+      prepared.payload,
+      sign_detached(out.held.private_key, prepared.to_be_signed));
+    out.disclosures = prepared.disclosure_set;
+
+    const auto receipt = ccf_receipt(service_key, out.statement, "2.14", path);
+    const auto transparent = sdcwt::set_unprotected_bstr_array(
+      out.statement, scitt_sd::label::SCITT_RECEIPTS, {receipt});
+    const auto bundle = create_bundle(
+                          out.statement,
+                          transparent,
+                          prepared.disclosure_set,
+                          "https://transparency.example",
+                          "2.14",
+                          1700000100)
+                          .bundle;
+
+    const auto for_signing = prepare_release(bundle, discloser_public);
+    out.release = attach_signature(
+      for_signing.protected_header,
+      for_signing.payload,
+      sign_detached(out.discloser_key, for_signing.to_be_signed));
+    return out;
+  }
+
+  // The service identity: a self-signed certificate, as CCF publishes.
+  RootIdentity a_transparency_service()
+  {
+    return create_root_identity();
+  }
+}
+
+TEST(VerifyRelease, PassesWhenTheStatementIsIncludedInTheLog)
+{
+  const auto service = a_transparency_service();
+  const auto released = register_and_release(service.private_key);
+
+  const std::optional<std::span<const uint8_t>> trusted{service.certificate};
+  const auto outcome =
+    verify_release(released.release, released.held.root.certificate, trusted);
+  EXPECT_TRUE(outcome.passed) << outcome.reason;
+  EXPECT_EQ(check_status(outcome.report_json, "scitt_receipt"), "pass");
+}
+
+TEST(VerifyRelease, PassesWithAProofPathOfSeveralSteps)
+{
+  const auto service = a_transparency_service();
+  const std::vector<std::pair<bool, std::vector<uint8_t>>> path = {
+    {true, std::vector<uint8_t>(32, 0xA1)},
+    {false, std::vector<uint8_t>(32, 0xB2)},
+    {true, std::vector<uint8_t>(32, 0xC3)}};
+  const auto released = register_and_release(service.private_key, path);
+
+  const std::optional<std::span<const uint8_t>> trusted{service.certificate};
+  const auto outcome =
+    verify_release(released.release, released.held.root.certificate, trusted);
+  EXPECT_TRUE(outcome.passed) << outcome.reason;
+  EXPECT_EQ(check_status(outcome.report_json, "scitt_receipt"), "pass");
+}
+
+TEST(VerifyRelease, RefusesAReceiptFromAnotherService)
+{
+  const auto service = a_transparency_service();
+  const auto released = register_and_release(service.private_key);
+
+  const auto stranger = a_transparency_service();
+  const std::optional<std::span<const uint8_t>> wrong{stranger.certificate};
+  const auto outcome =
+    verify_release(released.release, released.held.root.certificate, wrong);
+  EXPECT_FALSE(outcome.passed);
+  EXPECT_EQ(check_status(outcome.report_json, "scitt_receipt"), "fail");
+}
+
+TEST(VerifyRelease, RefusesAReceiptWhoseProofLeadsElsewhere)
+{
+  const auto service = a_transparency_service();
+  auto released = register_and_release(service.private_key);
+
+  // A receipt for a different statement, signed by the same service: the
+  // signature is genuine, but its leaf commits to other bytes.
+  const auto elsewhere = register_and_release(service.private_key);
+  const auto stolen =
+    ccf_receipt(service.private_key, elsewhere.statement, "2.14");
+  const auto transparent = sdcwt::set_unprotected_bstr_array(
+    released.statement, scitt_sd::label::SCITT_RECEIPTS, {stolen});
   const auto bundle = create_bundle(
-                        statement,
-                        registration.transparent_statement,
-                        prepared.disclosure_set,
+                        released.statement,
+                        transparent,
+                        released.disclosures,
                         "https://transparency.example",
                         "2.14",
                         1700000100)
                         .bundle;
-  const auto for_signing =
-    prepare_release(bundle, derive_public_key(discloser_key));
-  const auto release = attach_signature(
-    for_signing.protected_header,
-    for_signing.payload,
-    sign_detached(discloser_key, for_signing.to_be_signed));
 
-  const std::optional<std::span<const uint8_t>> trusted{ledger_public};
-  const auto outcome = verify_release(release, held.root.certificate, trusted);
-  EXPECT_TRUE(outcome.passed) << outcome.reason;
-  EXPECT_EQ(check_status(outcome.report_json, "scitt_receipt"), "pass");
-
-  // A different service key must not vouch for this statement.
-  const auto stranger = derive_public_key(generate_private_key());
-  const std::optional<std::span<const uint8_t>> wrong{stranger};
-  const auto refused = verify_release(release, held.root.certificate, wrong);
-  EXPECT_FALSE(refused.passed);
-  EXPECT_EQ(check_status(refused.report_json, "scitt_receipt"), "fail");
+  const std::optional<std::span<const uint8_t>> trusted{service.certificate};
+  const auto outcome =
+    verify_bundle(bundle, released.held.root.certificate, trusted);
+  EXPECT_FALSE(outcome.passed);
+  EXPECT_EQ(check_status(outcome.report_json, "scitt_receipt"), "fail");
 }
 
-TEST(VerifyRelease, LeavesTheReceiptUncheckedWithoutAServiceKey)
+TEST(VerifyRelease, RefusesAReceiptOverAnUnknownDataStructure)
+{
+  const auto service = a_transparency_service();
+  auto released = register_and_release(service.private_key);
+
+  // Same proof, same signature, but claiming a verifiable data structure this
+  // verifier does not implement. Guessing at it would be worse than refusing.
+  const auto other = ccf_receipt(
+    service.private_key, released.statement, "2.14", {}, /*vds=*/99);
+  const auto transparent = sdcwt::set_unprotected_bstr_array(
+    released.statement, scitt_sd::label::SCITT_RECEIPTS, {other});
+  const auto bundle = create_bundle(
+                        released.statement,
+                        transparent,
+                        released.disclosures,
+                        "https://transparency.example",
+                        "2.14",
+                        1700000100)
+                        .bundle;
+
+  const std::optional<std::span<const uint8_t>> trusted{service.certificate};
+  const auto outcome =
+    verify_bundle(bundle, released.held.root.certificate, trusted);
+  EXPECT_FALSE(outcome.passed);
+  EXPECT_EQ(check_status(outcome.report_json, "scitt_receipt"), "fail");
+}
+
+TEST(VerifyRelease, LeavesTheReceiptUncheckedWithoutAServiceCertificate)
 {
   const auto released = release_everything();
   const auto outcome =

@@ -3,6 +3,7 @@
 #include "native/api.h"
 
 #include "core/bundle.h"
+#include "core/ccf_receipt.h"
 #include "core/profile.h"
 #include "core/report.h"
 #include "core/text_chunks.h"
@@ -326,61 +327,13 @@ namespace scitt_sd::native
 
     // Why this API never reports a receipt result, in the report itself.
     constexpr std::string_view SCITT_SKIPPED_DETAIL =
-      "Not checked: no transparency service key was supplied. Without one, "
-      "nothing here shows the statement was ever registered.";
+      "Not checked: no transparency service certificate was supplied. Without "
+      "one, nothing here shows the statement was ever registered.";
 
     struct ReceiptReport
     {
       std::string status = "skipped";
       std::string detail = std::string(SCITT_SKIPPED_DETAIL);
-    };
-
-    // Checks a receipt against the service key a reader supplies out of band.
-    // The receipt carries the registered statement as its payload, so a valid
-    // signature over exactly those bytes is what ties the service's attestation
-    // to this statement and no other.
-    class ServiceKeyReceiptVerifier : public verify::ReceiptVerifier
-    {
-    public:
-      explicit ServiceKeyReceiptVerifier(ccf::crypto::Pem service_key) :
-        key(std::move(service_key))
-      {}
-
-      verify::ReceiptInfo verify(
-        std::span<const uint8_t> receipt,
-        std::span<const uint8_t> registered_statement) const override
-      {
-        std::span<uint8_t> attested;
-        bool signed_by_service = false;
-        try
-        {
-          signed_by_service =
-            ccf::crypto::make_cose_verifier_from_key(key)->verify(
-              receipt, attested);
-        }
-        catch (const std::exception& e)
-        {
-          throw verify::VerificationError(
-            std::string("the receipt could not be checked: ") + e.what(),
-            verify::Check::Receipt);
-        }
-        if (!signed_by_service)
-        {
-          throw verify::VerificationError(
-            "the receipt is not signed by the transparency service",
-            verify::Check::Receipt);
-        }
-        if (!std::ranges::equal(attested, registered_statement))
-        {
-          throw verify::VerificationError(
-            "the receipt covers different bytes from the registered statement",
-            verify::Check::Receipt);
-        }
-        return {};
-      }
-
-    private:
-      ccf::crypto::Pem key;
     };
 
     ordered_json check_entry(
@@ -1201,10 +1154,10 @@ namespace scitt_sd::native
         std::string("the MSRC root is not a PEM document: ") + e.what());
     }
 
-    // The service key is the reader's own trust material, exactly as the MSRC
-    // root is: a receipt checked against a key taken from the bundle would
-    // establish nothing.
-    std::optional<ServiceKeyReceiptVerifier> receipt_verifier;
+    // The service certificate is the reader's own trust material, exactly as
+    // the MSRC root is: a receipt checked against a certificate taken from the
+    // bundle would establish nothing.
+    std::optional<verify::CcfReceiptVerifier> receipt_verifier;
     if (scitt_trust.has_value())
     {
       try
@@ -1215,9 +1168,10 @@ namespace scitt_sd::native
       {
         return failed_outcome(
           verify::Check::Receipt,
-          std::string("the transparency service key is not a PEM document: ") +
+          std::string(
+            "the transparency service certificate is not a PEM document: ") +
             e.what(),
-          {"fail", "The transparency service key could not be read."});
+          {"fail", "The transparency service certificate could not be read."});
       }
     }
 
@@ -1263,17 +1217,20 @@ namespace scitt_sd::native
     ReceiptReport receipt;
     if (receipt_verifier.has_value())
     {
+      const std::string txid =
+        result.receipts.empty() ? proof.txid : result.receipts.front().txid;
       receipt.status = "pass";
       receipt.detail =
-        "The transparency service signed exactly these registered bytes, "
-        "under transaction " +
-        proof.txid + ".";
+        "The registered statement is included in the transparency service's "
+        "log: its digest is the leaf of an inclusion proof whose root the "
+        "service signed, under transaction " +
+        txid + ".";
     }
     else
     {
       notes.emplace_back(
-        "No transparency service key was supplied, so this says nothing about "
-        "whether the statement was registered.");
+        "No transparency service certificate was supplied, so this says "
+        "nothing about whether the statement was registered.");
     }
 
     VerificationOutcome outcome;

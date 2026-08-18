@@ -310,9 +310,11 @@ PYBIND11_MODULE(_native, module)
     py::arg("scitt_trust") = std::nullopt,
     "Check a signed release.\n\n"
     "Verifies the release signature under the key the enclosed statement "
-    "names in cnf, then everything verify_bundle owns. Returns {'passed': "
-    "bool, 'attributable': bool, 'report_json': str, 'reason': str}. A "
-    "statement with no cnf is unattributable rather than failed.");
+    "names in cnf, then everything verify_bundle owns. 'scitt_trust' is the "
+    "transparency service certificate, in PEM; supplying it adds the receipt "
+    "check. Returns {'passed': bool, 'attributable': bool, 'report_json': "
+    "str, 'reason': str}. A statement with no cnf is unattributable rather "
+    "than failed.");
 
   module.def(
     "prepare_release",
@@ -350,12 +352,10 @@ PYBIND11_MODULE(_native, module)
     },
     py::arg("registered_statement"),
     py::arg("ledger_key"),
-    "Register a statement with the demo's stand-in transparency service.\n\n"
-    "Signs a receipt over the exact statement bytes and attaches it at "
-    "unprotected header 394. Returns {'transparent_statement': bytes, "
-    "'receipt': bytes}. This is not a transparency service: there is no log "
-    "and no inclusion proof, so the receipt proves only that this key saw "
-    "these bytes.");
+    "Attach an opaque, unverifiable receipt to a statement. For tests.\n\n"
+    "This is not a transparency service: there is no log and no inclusion "
+    "proof, and no receipt verifier will accept what it produces. Register "
+    "with a real transparency service to obtain a receipt that verifies.");
 
   module.def(
     "create_bundle",
