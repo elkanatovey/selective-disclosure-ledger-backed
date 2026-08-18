@@ -28,14 +28,10 @@ endif()
 get_filename_component(CCF_CMAKE_DIR "${CCF_TARGETS_FILE}" DIRECTORY)
 get_filename_component(CCF_ROOT "${CCF_CMAKE_DIR}" DIRECTORY)
 
-if(CCF_ROOT STREQUAL "/opt/ccf")
-  find_package(ccf REQUIRED)
-else()
-  message(STATUS "Using relocated CCF install at ${CCF_ROOT}")
-  set(CCF_DIR "${CCF_ROOT}")
-  include("${CCF_CMAKE_DIR}/ccf-targets.cmake")
-  include("${CCF_CMAKE_DIR}/preproject.cmake")
-endif()
+message(STATUS "Using CCF install at ${CCF_ROOT}")
+set(CCF_DIR "${CCF_ROOT}")
+include("${CCF_CMAKE_DIR}/ccf-targets.cmake")
+include("${CCF_CMAKE_DIR}/preproject.cmake")
 
 project(
   scitt_selective_disclosure
