@@ -21,6 +21,9 @@ const state = {
   redacted: new Set(),
 };
 
+const spans = new Map();
+const drag = { active: false, withholding: true };
+
 const $ = (id) => document.getElementById(id);
 
 function b64encode(buffer) {
@@ -105,7 +108,28 @@ async function importKeyPair(pem) {
   return { privateKey, publicKey };
 }
 
-function render() {
+function paintChunk(chunk) {
+  const span = spans.get(chunk.index);
+  if (!span) return;
+  if (state.redacted.has(key("chunk", chunk.index))) {
+    span.className = "bar";
+    span.textContent = "\u00a0".repeat(Math.max(chunk.text.length, 1));
+  } else {
+    span.className = "chunk";
+    span.textContent = chunk.text;
+  }
+}
+
+// Repainting one span rather than rebuilding the body keeps the node the
+// pointer is over alive, so a drag survives the update.
+function setChunk(chunk, redacted) {
+  const id = key("chunk", chunk.index);
+  if (redacted) state.redacted.add(id);
+  else state.redacted.delete(id);
+  paintChunk(chunk);
+}
+
+function renderFields() {
   const fields = $("fields");
   fields.replaceChildren();
   for (const field of state.fields) {
@@ -119,7 +143,7 @@ function render() {
       const id = key("field", field.name);
       if (box.checked) state.redacted.add(id);
       else state.redacted.delete(id);
-      render();
+      renderFields();
     });
 
     const label = document.createElement("span");
@@ -136,28 +160,40 @@ function render() {
     row.append(box, label, value);
     fields.append(row);
   }
+}
 
+function renderBody() {
   const body = $("body-text");
   body.replaceChildren();
+  spans.clear();
   for (const chunk of state.chunks) {
     const span = document.createElement("span");
-    const id = key("chunk", chunk.index);
-    if (state.redacted.has(id)) {
-      span.className = "bar";
-      span.textContent = "\u00a0".repeat(Math.max(chunk.text.length, 1));
-    } else {
-      span.className = "chunk";
-      span.textContent = chunk.text;
-    }
     span.title = `chunk ${chunk.index}`;
-    span.addEventListener("click", () => {
-      if (state.redacted.has(id)) state.redacted.delete(id);
-      else state.redacted.add(id);
-      render();
+    spans.set(chunk.index, span);
+
+    span.addEventListener("pointerdown", (event) => {
+      event.preventDefault(); // no text selection while dragging
+      drag.active = true;
+      drag.withholding = !state.redacted.has(key("chunk", chunk.index));
+      setChunk(chunk, drag.withholding);
     });
+    span.addEventListener("pointerenter", () => {
+      if (drag.active) setChunk(chunk, drag.withholding);
+    });
+
     body.append(span);
+    paintChunk(chunk);
   }
 }
+
+function render() {
+  renderFields();
+  renderBody();
+}
+
+document.addEventListener("pointerup", () => {
+  drag.active = false;
+});
 
 $("load-key").addEventListener("click", async () => {
   const file = $("key-file").files[0];
@@ -168,11 +204,12 @@ $("load-key").addEventListener("click", async () => {
       : await crypto.subtle.generateKey(ALGORITHM, false, ["sign"]);
     const spki = await crypto.subtle.exportKey("spki", state.key.publicKey);
     state.publicKeyPem = toPem(spki);
-    // Registered so that statements issued from now on name this key in cnf.
+    // Published to the report application so statements can name it in cnf.
+    // Nothing about this key goes to the transparency service.
     await post("/api/msrc/key", { public_key_pem: state.publicKeyPem });
     $("key-state").textContent = file
-      ? "Loaded your release key and registered its public half."
-      : "Generated a release key and registered its public half.";
+      ? "Loaded your release key and published its public half."
+      : "Generated a release key and published its public half.";
   } catch (error) {
     state.key = null;
     $("key-state").textContent = `Could not load that key: ${error.message}`;

@@ -67,6 +67,7 @@ button {
   font-family: ui-monospace, monospace;
   line-height: 2;
   word-break: break-all;
+  user-select: none;
 }
 
 .chunk {

@@ -277,12 +277,12 @@ def create_app() -> FastAPI:
 
     @app.post("/api/msrc/key")
     async def msrc_key(body: DiscloserKeyRequest) -> dict[str, str]:
-        """Register the key that future statements will name in cnf."""
+        """Make MSRC's release key known, so statements can name it in cnf."""
         try:
-            msrc.register_disclosure_key(body.public_key_pem.encode("ascii"))
+            msrc.publish_disclosure_key(body.public_key_pem.encode("ascii"))
         except UnicodeEncodeError as error:
             raise HTTPException(400, "The public key must be ASCII PEM.") from error
-        return {"status": "registered"}
+        return {"status": "published"}
 
     @app.post("/api/msrc/release")
     async def msrc_release(body: ReleaseRequest) -> dict[str, object]:

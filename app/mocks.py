@@ -50,15 +50,16 @@ class MockMsrc:
         self.root_cert: bytes = identity["certificate"]
         self.issuer_did: str = identity["issuer_did"]
         # The public half of the key MSRC will sign disclosure releases with.
-        # MSRC registers it from its own page and keeps the private half, so
-        # nothing here can release anything. Until then, statements carry no
-        # cnf claim and a release cannot be attributed.
+        # MSRC keeps the private half on its own page and publishes this so
+        # statements can name it; the transparency service never sees it and
+        # nothing about it is registered anywhere. Until MSRC publishes one,
+        # statements carry no cnf claim and a release cannot be attributed.
         self.disclosure_public_key: bytes = b""
         self.enrollments: dict[str, Enrollment] = {}
         self.submissions: dict[str, Submission] = {}
 
-    def register_disclosure_key(self, public_key_pem: bytes) -> None:
-        """Name the key that future statements will commit to in cnf."""
+    def publish_disclosure_key(self, public_key_pem: bytes) -> None:
+        """Make known the key that future statements will name in cnf."""
         self.disclosure_public_key = public_key_pem
 
     def enroll(self, public_key_pem: bytes, subject: str) -> Enrollment:
