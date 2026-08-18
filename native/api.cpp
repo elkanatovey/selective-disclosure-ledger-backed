@@ -873,9 +873,9 @@ namespace scitt_sd::native
     }
   }
 
-  Bytes sign_release(
+  PreparedRelease prepare_release(
     std::span<const uint8_t> bundle_bytes,
-    std::span<const uint8_t> private_key_pem)
+    std::span<const uint8_t> public_key_pem)
   {
     require_size(
       bundle_bytes.size(), limits::MAX_BUNDLE_BYTES, "the proof bundle");
@@ -883,18 +883,33 @@ namespace scitt_sd::native
     {
       throw InvalidInput("the proof bundle is empty");
     }
-    const auto key = to_key(private_key_pem, "the release private key");
+    const auto public_key = to_pem(public_key_pem, "the release public key");
 
+    ccf::crypto::ECPublicKeyPtr holder;
     try
     {
-      const auto alg = sdcwt::cose_es_alg_for_curve(key->get_curve_id());
-      return sdcwt::sign_cose_sign1(
-        *key, sdcwt::encode_protected_header(alg), bundle_bytes);
+      holder = ccf::crypto::make_ec_public_key(public_key);
     }
     catch (const std::exception& e)
     {
       throw InvalidInput(
-        std::string("could not sign the release: ") + e.what());
+        std::string("the release key is not a public key: ") + e.what());
+    }
+
+    try
+    {
+      const auto alg = sdcwt::cose_es_alg_for_curve(holder->get_curve_id());
+      PreparedRelease out;
+      out.protected_header = sdcwt::encode_protected_header(alg);
+      out.payload.assign(bundle_bytes.begin(), bundle_bytes.end());
+      out.to_be_signed =
+        sdcwt::cose_to_be_signed(out.protected_header, out.payload);
+      return out;
+    }
+    catch (const std::exception& e)
+    {
+      throw InvalidInput(
+        std::string("could not prepare the release: ") + e.what());
     }
   }
 

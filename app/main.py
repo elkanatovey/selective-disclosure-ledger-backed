@@ -65,6 +65,16 @@ class ReleaseRequest(BaseModel):
     bundle_b64: str = Field(min_length=1, max_length=MAX_BUNDLE_B64)
     redact_fields: list[str] = Field(default_factory=list, max_length=16)
     redact_body_chunks: list[int] = Field(default_factory=list, max_length=8192)
+    public_key_pem: str = Field(min_length=1, max_length=4096)
+
+
+class DiscloserKeyRequest(BaseModel):
+    public_key_pem: str = Field(min_length=1, max_length=4096)
+
+
+class SignReleaseRequest(BaseModel):
+    release_id: str = Field(min_length=1, max_length=64)
+    signature_b64: str = Field(min_length=1, max_length=256)
 
 
 @dataclass
@@ -76,6 +86,14 @@ class Prepared:
     protected_header: bytes
     payload: bytes
     disclosures: bytes
+
+
+@dataclass
+class PreparedRelease:
+    """The presentation, held until MSRC's signature comes back."""
+
+    protected_header: bytes
+    payload: bytes
 
 
 def _decode_signature(encoded: str) -> bytes:
@@ -103,6 +121,7 @@ def create_app() -> FastAPI:
     msrc = MockMsrc()
     scitt = MockScitt()
     pending: dict[str, Prepared] = {}
+    pending_releases: dict[str, PreparedRelease] = {}
 
     @app.get("/", response_class=HTMLResponse)
     async def page(request: Request) -> HTMLResponse:
@@ -256,9 +275,18 @@ def create_app() -> FastAPI:
                 400, f"That bundle could not be read: {error}"
             ) from error
 
+    @app.post("/api/msrc/key")
+    async def msrc_key(body: DiscloserKeyRequest) -> dict[str, str]:
+        """Register the key that future statements will name in cnf."""
+        try:
+            msrc.register_disclosure_key(body.public_key_pem.encode("ascii"))
+        except UnicodeEncodeError as error:
+            raise HTTPException(400, "The public key must be ASCII PEM.") from error
+        return {"status": "registered"}
+
     @app.post("/api/msrc/release")
     async def msrc_release(body: ReleaseRequest) -> dict[str, object]:
-        """Drop the selected disclosures, then sign what is left."""
+        """Drop the selected disclosures, then hand back the bytes to sign."""
         bundle = _decode_bundle(body.bundle_b64)
         selection = json.dumps(
             {
@@ -269,12 +297,39 @@ def create_app() -> FastAPI:
         )
         try:
             presented = _native.present_bundle(bundle, selection)
-            release = msrc.sign_release(presented)
-        except ValueError as error:
+            prepared = _native.prepare_release(
+                presented, body.public_key_pem.encode("ascii")
+            )
+        except (ValueError, UnicodeEncodeError) as error:
             raise HTTPException(400, f"The redaction was refused: {error}") from error
+
+        release_id = secrets.token_hex(8)
+        evict(pending_releases)
+        pending_releases[release_id] = PreparedRelease(
+            protected_header=prepared["protected_header"],
+            payload=prepared["payload"],
+        )
+        return {
+            "release_id": release_id,
+            "to_be_signed_b64": base64.b64encode(prepared["to_be_signed"]).decode(),
+            "presented_bytes": len(presented),
+        }
+
+    @app.post("/api/msrc/sign")
+    async def msrc_sign(body: SignReleaseRequest) -> dict[str, object]:
+        """Attach MSRC's signature to the presentation it approved."""
+        held = pending_releases.pop(body.release_id, None)
+        if held is None:
+            raise HTTPException(404, "Prepare a release before signing it.")
+        signature = _decode_signature(body.signature_b64)
+        try:
+            release = _native.attach_signature(
+                held.protected_header, held.payload, signature
+            )
+        except ValueError as error:
+            raise HTTPException(400, f"The signature was refused: {error}") from error
         return {
             "release_b64": base64.b64encode(release).decode(),
-            "presented_bytes": len(presented),
             "release_bytes": len(release),
         }
 

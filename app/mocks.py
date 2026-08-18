@@ -49,15 +49,17 @@ class MockMsrc:
         self._root_key = identity["private_key"]
         self.root_cert: bytes = identity["certificate"]
         self.issuer_did: str = identity["issuer_did"]
-        # The key MSRC signs disclosure releases with. Deliberately not the CA
-        # key: releasing what a report said is a different authority from
-        # endorsing who wrote it.
-        self._disclosure_key = _native.generate_private_key()
-        self.disclosure_public_key: bytes = _native.derive_public_key(
-            self._disclosure_key
-        )
+        # The public half of the key MSRC will sign disclosure releases with.
+        # MSRC registers it from its own page and keeps the private half, so
+        # nothing here can release anything. Until then, statements carry no
+        # cnf claim and a release cannot be attributed.
+        self.disclosure_public_key: bytes = b""
         self.enrollments: dict[str, Enrollment] = {}
         self.submissions: dict[str, Submission] = {}
+
+    def register_disclosure_key(self, public_key_pem: bytes) -> None:
+        """Name the key that future statements will commit to in cnf."""
+        self.disclosure_public_key = public_key_pem
 
     def enroll(self, public_key_pem: bytes, subject: str) -> Enrollment:
         """Endorse a public key. The private half is never sent here."""
@@ -73,11 +75,6 @@ class MockMsrc:
         evict(self.submissions)
         self.submissions[record.submission_id] = record
         return record
-
-    def sign_release(self, bundle: bytes) -> bytes:
-        """Sign a redacted presentation with the key named in cnf."""
-        release: bytes = _native.sign_release(bundle, self._disclosure_key)
-        return release
 
 
 class MockScitt:

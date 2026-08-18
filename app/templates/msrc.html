@@ -14,14 +14,24 @@
     <h1>Disclosure Release</h1>
 
     <section>
-      <h2>1. Load a bundle</h2>
+      <h2>1. Disclosure key</h2>
+      <label for="key-file">
+        MSRC's release key (PEM, PKCS#8, P-256). Leave empty to generate one.
+      </label>
+      <input type="file" id="key-file" accept=".pem,.key" />
+      <button id="load-key">Load key</button>
+      <p id="key-state" class="state">No key loaded.</p>
+    </section>
+
+    <section>
+      <h2>2. Load a bundle</h2>
       <input type="file" id="bundle-file" accept=".cbor" />
       <button id="load">Load</button>
       <p id="load-state" class="state">No bundle loaded.</p>
     </section>
 
     <section id="editor" hidden>
-      <h2>2. Choose what to withhold</h2>
+      <h2>3. Choose what to withhold</h2>
       <div id="fields"></div>
       <h3>Body</h3>
       <p id="body-text" class="body"></p>
@@ -32,7 +42,7 @@
     </section>
 
     <section id="export-section" hidden>
-      <h2>3. Sign and export</h2>
+      <h2>4. Sign and export</h2>
       <button id="export">Sign and export</button>
       <p id="export-state" class="state"></p>
     </section>

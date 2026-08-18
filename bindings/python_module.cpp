@@ -271,19 +271,24 @@ PYBIND11_MODULE(_native, module)
     "Returns the exact bytes a transparency service registers.");
 
   module.def(
-    "sign_release",
-    [](const py::bytes& bundle, const py::bytes& private_key) {
+    "prepare_release",
+    [](const py::bytes& bundle, const py::bytes& public_key) {
       const auto bundle_span = as_span(bundle);
-      const auto key_span = as_span(private_key);
-      const auto release = without_gil(
-        [&] { return native::sign_release(bundle_span, key_span); });
-      return to_bytes(release);
+      const auto key_span = as_span(public_key);
+      auto prepared = without_gil(
+        [&] { return native::prepare_release(bundle_span, key_span); });
+      py::dict result;
+      result["to_be_signed"] = to_bytes(prepared.to_be_signed);
+      result["protected_header"] = to_bytes(prepared.protected_header);
+      result["payload"] = to_bytes(prepared.payload);
+      return result;
     },
     py::arg("bundle"),
-    py::arg("private_key"),
-    "Sign a presentation with the key the statement named in cnf.\n\n"
-    "The payload is the presented bundle verbatim, so the signature covers "
-    "exactly what is being released. Returns the COSE_Sign1 as bytes.");
+    py::arg("public_key"),
+    "Wrap a presentation for signing by the party named in cnf.\n\n"
+    "Returns {'to_be_signed': bytes, 'protected_header': bytes, 'payload': "
+    "bytes}. The holder signs 'to_be_signed' and nothing else; pass the "
+    "result to attach_signature.");
 
   module.def(
     "mock_register_statement",
