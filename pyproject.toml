@@ -25,6 +25,9 @@ dev = [
   "flake8>=7,<8",
   "isort>=5,<7",
   "mypy>=1.8,<2",
+  # Tests only, to stand in for the browser's WebCrypto signing. The
+  # application does no cryptography in Python and must not depend on this.
+  "cryptography>=42,<47",
 ]
 
 [tool.setuptools.packages.find]

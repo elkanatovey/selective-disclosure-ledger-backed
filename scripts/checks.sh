@@ -15,7 +15,7 @@ elif [ "$#" -ne 0 ]; then
   exit 2
 fi
 
-PYTHON_PATHS=(app scripts)
+PYTHON_PATHS=(app scripts tests/integration)
 WEB_PATHS=(
   app/static
   app/templates
@@ -51,7 +51,7 @@ else
 fi
 
 flake8 --select=F,E9 "${PYTHON_PATHS[@]}"
-mypy app
+mypy app tests/integration
 python scripts/notice_check.py
 python scripts/ascii_check.py
 
