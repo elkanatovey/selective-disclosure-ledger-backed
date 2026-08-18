@@ -247,13 +247,16 @@ setup_app_venv() {
 # --- the ledger --------------------------------------------------------------
 
 build_ledger_image() {
+    local scitt_version
     if docker image inspect "${DOCKER_TAG}" >/dev/null 2>&1; then
         log "reusing the ledger image ${DOCKER_TAG}"
         return 0
     fi
+    scitt_version=$(git -C "${SUBMODULE_DIR}" describe --tags --long --always)
     log "building the ledger image ${DOCKER_TAG} (this takes a while)"
     docker build --progress=plain --tag "${DOCKER_TAG}" \
         --build-arg "CCF_VERSION=${CCF_VERSION}" \
+        --build-arg "SCITT_VERSION_OVERRIDE=${scitt_version}" \
         --file "${SUBMODULE_DIR}/docker/Dockerfile" \
         "${SUBMODULE_DIR}" >"${LOG_DIR}/ledger-build.log" 2>&1 ||
         {
