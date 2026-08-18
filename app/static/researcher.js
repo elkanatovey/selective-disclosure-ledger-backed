@@ -91,16 +91,6 @@ async function post(url, payload) {
   return document_;
 }
 
-function setStages(stages) {
-  const list = $("stages");
-  list.replaceChildren();
-  for (const stage of stages) {
-    const item = document.createElement("li");
-    item.textContent = `${stage.name}: ${stage.detail}`;
-    list.append(item);
-  }
-}
-
 $("enroll").addEventListener("click", async () => {
   const file = $("key-file").files[0];
   $("key-state").textContent = file ? "Importing..." : "Generating...";
@@ -125,8 +115,8 @@ $("enroll").addEventListener("click", async () => {
 $("report").addEventListener("submit", async (event) => {
   event.preventDefault();
   $("outcome").textContent = "";
+  $("summary").textContent = "";
   $("bundle-link").hidden = true;
-  setStages([]);
 
   try {
     const prepared = await post("/api/prepare", {
@@ -154,20 +144,17 @@ $("report").addEventListener("submit", async (event) => {
       signature_b64: b64encode(signature),
     });
 
-    setStages([
-      {
-        name: "prepare",
-        detail: `${prepared.disclosure_count} disclosures held back.`,
-      },
-      ...result.stages,
-    ]);
     $("outcome").textContent =
-      `Submitted ${result.submission_id} at transaction ${result.txid}.`;
+      `Transaction ${result.txid} - MSRC submission ${result.submission_id}`;
 
     const link = $("bundle-link");
     link.href = `/api/submissions/${result.submission_id}/bundle`;
     link.textContent = `Download the proof bundle (${result.bundle_bytes} bytes)`;
     link.hidden = false;
+
+    $("summary").textContent =
+      `Registered with the transparency service before MSRC received the ` +
+      `${prepared.disclosure_count} disclosures.`;
   } catch (error) {
     $("outcome").textContent = `Failed: ${error.message}`;
   }
