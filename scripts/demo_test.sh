@@ -29,7 +29,9 @@ log() { printf '[demo] %s\n' "$*" >&2; }
 cleanup() {
   local status=$?
   trap - EXIT INT TERM
-  [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null || true
+  if [ -n "$APP_PID" ]; then
+    kill "$APP_PID" 2>/dev/null || true
+  fi
   if [ -n "$LEDGER_PID" ]; then
     # sandbox.sh starts the node as a child, so stop the group.
     kill -- "-$LEDGER_PID" 2>/dev/null || kill "$LEDGER_PID" 2>/dev/null || true
