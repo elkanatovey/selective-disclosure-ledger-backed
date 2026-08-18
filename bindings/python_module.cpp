@@ -271,6 +271,50 @@ PYBIND11_MODULE(_native, module)
     "Returns the exact bytes a transparency service registers.");
 
   module.def(
+    "release_payload",
+    [](const py::bytes& release) {
+      const auto span = as_span(release);
+      const auto payload =
+        without_gil([&span] { return native::release_payload(span); });
+      return to_bytes(payload);
+    },
+    py::arg("release"),
+    "Open a signed release and return the proof bundle inside it.\n\n"
+    "Says nothing about the signature; verify_release answers that.");
+
+  module.def(
+    "verify_release",
+    [](
+      const py::bytes& release,
+      const py::bytes& msrc_root,
+      const std::optional<py::bytes>& scitt_trust) {
+      const auto release_span = as_span(release);
+      const auto root_span = as_span(msrc_root);
+      std::optional<std::span<const uint8_t>> trust_span;
+      if (scitt_trust.has_value())
+      {
+        trust_span = as_span(*scitt_trust);
+      }
+      auto outcome = without_gil([&] {
+        return native::verify_release(release_span, root_span, trust_span);
+      });
+      py::dict result;
+      result["passed"] = outcome.passed;
+      result["attributable"] = outcome.attributable;
+      result["report_json"] = std::move(outcome.report_json);
+      result["reason"] = std::move(outcome.reason);
+      return result;
+    },
+    py::arg("release"),
+    py::arg("msrc_root"),
+    py::arg("scitt_trust") = std::nullopt,
+    "Check a signed release.\n\n"
+    "Verifies the release signature under the key the enclosed statement "
+    "names in cnf, then everything verify_bundle owns. Returns {'passed': "
+    "bool, 'attributable': bool, 'report_json': str, 'reason': str}. A "
+    "statement with no cnf is unattributable rather than failed.");
+
+  module.def(
     "prepare_release",
     [](const py::bytes& bundle, const py::bytes& public_key) {
       const auto bundle_span = as_span(bundle);

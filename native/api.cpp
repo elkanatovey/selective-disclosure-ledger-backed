@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <array>
 #include <ccf/_private/crypto/certs.h>
+#include <ccf/crypto/cose_verifier.h>
 #include <ccf/crypto/ec_key_pair.h>
 #include <ccf/crypto/ec_public_key.h>
 #include <ccf/crypto/verifier.h>
@@ -1183,5 +1184,137 @@ namespace scitt_sd::native
     outcome.report_json =
       verification_document(std::nullopt, {}, notes, details).dump(2);
     return outcome;
+  }
+
+  Bytes release_payload(std::span<const uint8_t> release_bytes)
+  {
+    require_size(
+      release_bytes.size(), limits::MAX_BUNDLE_BYTES, "the signed release");
+    try
+    {
+      return verify::cose_payload(release_bytes);
+    }
+    catch (const std::exception& e)
+    {
+      throw InvalidInput(
+        std::string("the release is not a COSE_Sign1: ") + e.what());
+    }
+  }
+
+  ReleaseOutcome verify_release(
+    std::span<const uint8_t> release_bytes,
+    std::span<const uint8_t> msrc_root_pem,
+    const std::optional<std::span<const uint8_t>>& scitt_trust)
+  {
+    require_size(
+      release_bytes.size(), limits::MAX_BUNDLE_BYTES, "the signed release");
+    if (release_bytes.empty())
+    {
+      throw InvalidInput("the signed release is empty");
+    }
+
+    ReleaseOutcome out;
+    ordered_json release_check;
+    release_check["id"] = "release_signature";
+    release_check["label"] = "Release signature";
+
+    Bytes bundle_bytes;
+    try
+    {
+      bundle_bytes = verify::cose_payload(release_bytes);
+    }
+    catch (const std::exception& e)
+    {
+      out.reason = std::string("the release is not a COSE_Sign1: ") + e.what();
+      release_check["status"] = "fail";
+      release_check["detail"] = out.reason;
+      ordered_json report;
+      report["overall"] = "fail";
+      report["checks"] = ordered_json::array({release_check});
+      report["detail"] = out.reason;
+      out.report_json = report.dump(2);
+      return out;
+    }
+
+    const auto inner = verify_bundle(bundle_bytes, msrc_root_pem, scitt_trust);
+
+    std::string failure;
+    std::string confirmation;
+    try
+    {
+      confirmation = verify::confirmation_key_pem(
+        extract_statements(bundle_bytes).registered_statement);
+    }
+    catch (const std::exception& e)
+    {
+      failure =
+        std::string("the enclosed statement could not be read: ") + e.what();
+    }
+
+    if (!failure.empty())
+    {
+      release_check["status"] = "fail";
+      release_check["detail"] = failure;
+    }
+    else if (confirmation.empty())
+    {
+      release_check["status"] = "unattributable";
+      release_check["detail"] =
+        "The statement names no discloser, so nothing binds this release to "
+        "anyone. What it contains is still checked below.";
+    }
+    else
+    {
+      out.attributable = true;
+      bool verified = false;
+      try
+      {
+        auto verifier = ccf::crypto::make_cose_verifier_from_key(
+          ccf::crypto::Pem(confirmation));
+        std::span<uint8_t> authenticated;
+        verified = verifier->verify(release_bytes, authenticated);
+      }
+      catch (const std::exception&)
+      {
+        verified = false;
+      }
+      release_check["status"] = verified ? "pass" : "fail";
+      release_check["detail"] = verified ?
+        "Signed by the key the statement names in cnf, so this release is the "
+        "act of the party the issuer nominated." :
+        "Not signed by the key the statement names in cnf.";
+      if (!verified)
+      {
+        failure = "the release is not signed by the key named in cnf";
+      }
+    }
+
+    ordered_json report;
+    try
+    {
+      report = ordered_json::parse(inner.report_json);
+    }
+    catch (const std::exception&)
+    {
+      report = ordered_json::object();
+      report["checks"] = ordered_json::array();
+    }
+
+    auto checks = ordered_json::array({release_check});
+    for (const auto& check : report["checks"])
+    {
+      checks.push_back(check);
+    }
+    report["checks"] = checks;
+
+    out.passed = inner.passed && release_check["status"] != "fail";
+    report["overall"] = out.passed ? "pass" : "fail";
+    if (!out.passed)
+    {
+      out.reason = failure.empty() ? inner.reason : failure;
+      report["detail"] = out.reason;
+    }
+    out.report_json = report.dump(2);
+    return out;
   }
 }

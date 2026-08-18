@@ -308,4 +308,35 @@ namespace scitt_sd::native
     std::span<const uint8_t> bundle_bytes,
     std::span<const uint8_t> msrc_root_pem,
     const std::optional<std::span<const uint8_t>>& scitt_trust = std::nullopt);
+
+  // The proof bundle inside a signed release, copied out. Says nothing about
+  // the signature over it: verify_release answers that.
+  //
+  // Throws InvalidInput if the bytes are not a COSE_Sign1.
+  Bytes release_payload(std::span<const uint8_t> release_bytes);
+
+  struct ReleaseOutcome
+  {
+    // Whether every check this API owns passed. As for verify_bundle, the
+    // SCITT receipt is not one of them.
+    bool passed = false;
+    // Whether the statement named a discloser at all. A release for a
+    // statement with no `cnf` is unattributable, which is a different answer
+    // from a release whose signature is wrong.
+    bool attributable = false;
+    std::string report_json;
+    std::string reason;
+  };
+
+  // Check a signed release: the release signature under the key the enclosed
+  // statement named in `cnf`, and then everything verify_bundle owns for the
+  // bundle inside it.
+  //
+  // A failed check is an outcome, not an error, exactly as for verify_bundle.
+  //
+  // Throws InvalidInput only when there was nothing to check.
+  ReleaseOutcome verify_release(
+    std::span<const uint8_t> release_bytes,
+    std::span<const uint8_t> msrc_root_pem,
+    const std::optional<std::span<const uint8_t>>& scitt_trust = std::nullopt);
 }

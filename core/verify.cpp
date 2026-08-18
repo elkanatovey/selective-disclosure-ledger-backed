@@ -10,7 +10,9 @@
 #include <algorithm>
 #include <ccf/_private/crypto/cbor.h>
 #include <ccf/_private/crypto/cose.h>
+#include <ccf/crypto/base64.h>
 #include <ccf/crypto/cose_verifier.h>
+#include <ccf/crypto/ec_public_key.h>
 #include <ccf/crypto/verifier.h>
 #include <didx509cpp/didx509cpp.h>
 #include <set>
@@ -1029,5 +1031,97 @@ namespace scitt_sd::verify
   Result inspect_bundle(const bundle::ProofBundle& proof)
   {
     return run_checks(proof, nullptr, nullptr);
+  }
+
+  std::vector<uint8_t> cose_payload(std::span<const uint8_t> signed_bytes)
+  {
+    return parse_sign1(signed_bytes, "release").payload;
+  }
+
+  std::string confirmation_key_pem(
+    std::span<const uint8_t> registered_statement)
+  {
+    const auto parts = parse_sign1(registered_statement, "registered");
+    const auto root = parse_or_fail(parts.payload, "payload");
+    require(
+      std::holds_alternative<cbor::Map>(root->value), "payload must be a map");
+
+    for (const auto& [label, value] : std::get<cbor::Map>(root->value).items)
+    {
+      if (!is_signed(label) || label->as_signed() != sdcwt::CWT_CNF)
+      {
+        continue;
+      }
+      require(
+        std::holds_alternative<cbor::Map>(value->value),
+        "cnf (8) must be a map");
+      const auto& confirmation = std::get<cbor::Map>(value->value);
+      require(
+        confirmation.items.size() == 1 &&
+          is_signed(confirmation.items[0].first) &&
+          confirmation.items[0].first->as_signed() == sdcwt::CNF_COSE_KEY,
+        "cnf (8) must carry a COSE_Key (1)");
+
+      const auto& key = confirmation.items[0].second;
+      require(
+        std::holds_alternative<cbor::Map>(key->value),
+        "the cnf COSE_Key must be a map");
+
+      std::vector<uint8_t> x;
+      std::vector<uint8_t> y;
+      int64_t kty = 0;
+      int64_t crv = 0;
+      for (const auto& [parameter, entry] :
+           std::get<cbor::Map>(key->value).items)
+      {
+        if (!is_signed(parameter))
+        {
+          continue;
+        }
+        switch (parameter->as_signed())
+        {
+          case sdcwt::COSE_KEY_KTY:
+            require(is_signed(entry), "the cnf kty must be an integer");
+            kty = entry->as_signed();
+            break;
+          case sdcwt::COSE_KEY_CRV:
+            require(is_signed(entry), "the cnf crv must be an integer");
+            crv = entry->as_signed();
+            break;
+          case sdcwt::COSE_KEY_X:
+            require(is_bytes(entry), "the cnf x coordinate must be a bstr");
+            x = copy_bytes(entry);
+            break;
+          case sdcwt::COSE_KEY_Y:
+            require(is_bytes(entry), "the cnf y coordinate must be a bstr");
+            y = copy_bytes(entry);
+            break;
+          default:
+            break;
+        }
+      }
+
+      require(kty == sdcwt::COSE_KTY_EC2, "the cnf key must be an EC2 key");
+      require(!x.empty() && !y.empty(), "the cnf key is missing a coordinate");
+      // Only the profile's own curve: a cnf key on anything else could not
+      // have signed a release this profile would accept.
+      require(crv == 1, "the cnf key must be on P-256");
+
+      ccf::crypto::JsonWebKeyECPublic jwk;
+      jwk.kty = ccf::crypto::JsonWebKeyType::EC;
+      jwk.crv = ccf::crypto::JsonWebKeyECCurve::P256;
+      jwk.x = ccf::crypto::b64url_from_raw(x, false);
+      jwk.y = ccf::crypto::b64url_from_raw(y, false);
+      try
+      {
+        return ccf::crypto::make_ec_public_key(jwk)->public_key_pem().str();
+      }
+      catch (const std::exception& e)
+      {
+        fail(
+          std::string("the cnf key is not a usable public key: ") + e.what());
+      }
+    }
+    return {};
   }
 }

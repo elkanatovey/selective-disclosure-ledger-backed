@@ -668,3 +668,124 @@ TEST(MockRegisterStatement, AttachesAReceiptWithoutTouchingTheStatement)
   const auto outcome = verify_bundle(bundle, issued.root.certificate);
   EXPECT_TRUE(outcome.passed) << outcome.reason;
 }
+
+namespace
+{
+  // A full round trip: a statement naming a discloser, registered, bundled,
+  // then presented and signed by that discloser.
+  struct Released
+  {
+    Held held;
+    Bytes discloser_key;
+    Bytes bundle;
+    Bytes release;
+  };
+
+  Released release_everything(bool name_a_discloser = true)
+  {
+    Released out;
+    out.held = hold_a_key();
+    out.discloser_key = generate_private_key();
+    const auto discloser_public = derive_public_key(out.discloser_key);
+
+    const auto prepared = prepare_statement(
+      report_document(),
+      out.held.public_key,
+      out.held.leaf_cert,
+      out.held.root.certificate,
+      name_a_discloser ? discloser_public : Bytes{});
+    const auto statement = attach_signature(
+      prepared.protected_header,
+      prepared.payload,
+      sign_detached(out.held.private_key, prepared.to_be_signed));
+    const auto registration =
+      mock_register_statement(statement, out.held.root.private_key);
+    out.bundle = create_bundle(
+                   statement,
+                   registration.transparent_statement,
+                   prepared.disclosure_set,
+                   "https://transparency.example",
+                   "2.14",
+                   1700000100)
+                   .bundle;
+
+    const auto for_signing = prepare_release(out.bundle, discloser_public);
+    out.release = attach_signature(
+      for_signing.protected_header,
+      for_signing.payload,
+      sign_detached(out.discloser_key, for_signing.to_be_signed));
+    return out;
+  }
+
+  json check_status(const std::string& report, const std::string& id)
+  {
+    return check_of(json::parse(report), id).at("status");
+  }
+}
+
+TEST(VerifyRelease, PassesWhenTheDiscloserNamedInCnfSignedIt)
+{
+  const auto released = release_everything();
+  const auto outcome =
+    verify_release(released.release, released.held.root.certificate);
+
+  EXPECT_TRUE(outcome.passed) << outcome.reason;
+  EXPECT_TRUE(outcome.attributable);
+  EXPECT_EQ(check_status(outcome.report_json, "release_signature"), "pass");
+  EXPECT_EQ(check_status(outcome.report_json, "statement_binding"), "pass");
+  EXPECT_EQ(check_status(outcome.report_json, "msrc_chain"), "pass");
+  EXPECT_EQ(check_status(outcome.report_json, "issuer_signature"), "pass");
+  EXPECT_EQ(check_status(outcome.report_json, "disclosures"), "pass");
+  // The receipt is never checked here, however the release verifies.
+  EXPECT_EQ(check_status(outcome.report_json, "scitt_receipt"), "skipped");
+}
+
+TEST(VerifyRelease, RefusesAReleaseSignedByAnyoneElse)
+{
+  auto released = release_everything();
+  const auto stranger = generate_private_key();
+  const auto for_signing =
+    prepare_release(released.bundle, derive_public_key(stranger));
+  const auto forged = attach_signature(
+    for_signing.protected_header,
+    for_signing.payload,
+    sign_detached(stranger, for_signing.to_be_signed));
+
+  const auto outcome = verify_release(forged, released.held.root.certificate);
+  EXPECT_FALSE(outcome.passed);
+  EXPECT_TRUE(outcome.attributable);
+  EXPECT_EQ(check_status(outcome.report_json, "release_signature"), "fail");
+}
+
+TEST(VerifyRelease, ReportsAStatementWithNoCnfAsUnattributable)
+{
+  const auto released = release_everything(/*name_a_discloser=*/false);
+  const auto outcome =
+    verify_release(released.release, released.held.root.certificate);
+
+  // Nothing is wrong with the content; there is simply nobody to attribute
+  // the release to, which is not the same as a failed signature.
+  EXPECT_FALSE(outcome.attributable);
+  EXPECT_EQ(
+    check_status(outcome.report_json, "release_signature"), "unattributable");
+  EXPECT_TRUE(outcome.passed) << outcome.reason;
+}
+
+TEST(VerifyRelease, RefusesAnUntrustedMsrcRoot)
+{
+  const auto released = release_everything();
+  const auto stranger = create_root_identity();
+  const auto outcome = verify_release(released.release, stranger.certificate);
+
+  EXPECT_FALSE(outcome.passed);
+  EXPECT_EQ(check_status(outcome.report_json, "release_signature"), "pass");
+  EXPECT_EQ(check_status(outcome.report_json, "msrc_chain"), "fail");
+}
+
+TEST(VerifyRelease, RefusesSomethingThatIsNotARelease)
+{
+  const auto released = release_everything();
+  const auto outcome =
+    verify_release(released.bundle, released.held.root.certificate);
+  EXPECT_FALSE(outcome.passed);
+}

@@ -77,6 +77,11 @@ class SignReleaseRequest(BaseModel):
     signature_b64: str = Field(min_length=1, max_length=256)
 
 
+class VerifyRequest(BaseModel):
+    release_b64: str = Field(min_length=1, max_length=MAX_BUNDLE_B64)
+    msrc_root_pem: str = Field(min_length=1, max_length=8192)
+
+
 @dataclass
 class Prepared:
     """What is held between handing out the bytes and getting the signature."""
@@ -275,6 +280,15 @@ def create_app() -> FastAPI:
                 400, f"That bundle could not be read: {error}"
             ) from error
 
+    @app.get("/api/msrc/root")
+    async def msrc_root() -> Response:
+        """MSRC's CA certificate, which a reader needs to check any release."""
+        return Response(
+            content=msrc.root_cert,
+            media_type="application/x-pem-file",
+            headers={"content-disposition": 'attachment; filename="msrc-root.pem"'},
+        )
+
     @app.post("/api/msrc/key")
     async def msrc_key(body: DiscloserKeyRequest) -> dict[str, str]:
         """Make MSRC's release key known, so statements can name it in cnf."""
@@ -331,6 +345,37 @@ def create_app() -> FastAPI:
         return {
             "release_b64": base64.b64encode(release).decode(),
             "release_bytes": len(release),
+        }
+
+    @app.get("/verify", response_class=HTMLResponse)
+    async def verify_page(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(request, "verify.html", {})
+
+    @app.post("/api/verify")
+    async def verify(body: VerifyRequest) -> dict[str, object]:
+        """Check a signed release against an independently supplied root."""
+        release = _decode_bundle(body.release_b64)
+        try:
+            outcome = _native.verify_release(
+                release, body.msrc_root_pem.encode("ascii")
+            )
+        except (ValueError, UnicodeEncodeError) as error:
+            raise HTTPException(400, f"Nothing to check: {error}") from error
+
+        # What the release actually says, shown whether or not it verified:
+        # a reader still needs to see which parts were withheld.
+        contents: object = None
+        try:
+            bundle = _native.release_payload(release)
+            contents = json.loads(_native.inspect_bundle(bundle))
+        except ValueError:
+            contents = None
+
+        return {
+            "passed": outcome["passed"],
+            "attributable": outcome["attributable"],
+            "report": json.loads(outcome["report_json"]),
+            "contents": contents,
         }
 
     return app

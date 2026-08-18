@@ -67,6 +67,21 @@ namespace scitt_sd::verify
     Check failed_check;
   };
 
+  // The payload of a COSE_Sign1, copied out. Opens a signed release without
+  // saying anything about its signature.
+  //
+  // Throws VerificationError if the bytes are not a COSE_Sign1.
+  std::vector<uint8_t> cose_payload(std::span<const uint8_t> signed_bytes);
+
+  // The confirmation key a registered statement names in its `cnf` claim,
+  // rendered as a PEM public key. Empty when the statement carries no cnf: a
+  // release for such a statement cannot be attributed to anyone, which is a
+  // different answer from a release that fails to verify.
+  //
+  // Throws VerificationError if the statement or its cnf is malformed.
+  std::string confirmation_key_pem(
+    std::span<const uint8_t> registered_statement);
+
   // What a receipt verifier could establish about a receipt.
   struct ReceiptInfo
   {
