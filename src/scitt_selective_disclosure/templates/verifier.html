@@ -1,0 +1,118 @@
+<!--
+  Copyright (c) Microsoft Corporation.
+  Licensed under the MIT License.
+-->
+{% extends "base.html" %}
+{% block title %}Verifier - SCITT selective disclosure{% endblock %}
+{% block content %}
+<h1>Verifier</h1>
+<p>
+  Verification is independent of the researcher and of MSRC. Import a bundle, the MSRC
+  trusted root and the transparency service trust material fetched separately from
+  <code>/.well-known/scitt-keys</code>. Every check is reported on its own, and the
+  overall result passes only if all of them pass.
+</p>
+<p class="hint">
+  Two engines run. The C++ selective-disclosure tool checks the MSRC certificate chain,
+  the issuer signature, the disclosures and the statement binding. The SCITT receipt is
+  checked only by the official upstream
+  <code>pyscitt</code> verifier, which is given the exact registered and transparent
+  statement bytes the bundle carries.
+</p>
+
+<form id="verify-form" class="stack" autocomplete="off">
+  <div class="field">
+    <label for="verify-bundle">Bundle file (up to {{ max_bundle_bytes }} bytes)</label>
+    <input
+      type="file"
+      id="verify-bundle"
+      name="bundle"
+      accept=".cbor,.cose,.bundle,.sdcwt"
+      required
+    />
+  </div>
+  <div class="field">
+    <label for="verify-msrc-root">MSRC trusted root (PEM)</label>
+    <input
+      type="file"
+      id="verify-msrc-root"
+      name="msrc_root"
+      accept=".pem,.crt,.cer"
+      required
+    />
+  </div>
+  <div class="field">
+    <label for="verify-scitt-trust">SCITT trust material</label>
+    <input
+      type="file"
+      id="verify-scitt-trust"
+      name="scitt_trust"
+      accept=".pem,.crt,.cer,.json,.cbor"
+      required
+    />
+    <p class="hint">
+      Fetch this independently, for example
+      <code
+        >curl -k https://127.0.0.1:8000/.well-known/scitt-keys -o scitt-keys.cbor</code
+      >. It is stored in its own directory and handed to the official verifier as its
+      trust store.
+    </p>
+  </div>
+  <div class="actions">
+    <button type="submit">Verify bundle</button>
+  </div>
+</form>
+
+<section aria-labelledby="result-heading" class="panel">
+  <h2 id="result-heading">Verification result</h2>
+  <output id="verify-status" class="status" aria-live="polite"
+    >No verification yet.</output
+  >
+  <table id="source-table" class="data-table">
+    <caption>
+      Verdicts of the two independent verification engines. Both must pass.
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">Engine</th>
+        <th scope="col">Status</th>
+        <th scope="col">Detail</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <table id="check-table" class="data-table">
+    <caption>
+      Individual checks. The first four come from the C++ selective-disclosure tool; the
+      SCITT receipt comes from the official upstream verifier.
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">Check</th>
+        <th scope="col">Status</th>
+        <th scope="col">Detail</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <p class="actions">
+    <a id="report-link" class="button-link" href="#" download hidden>Export report</a>
+  </p>
+</section>
+
+<section aria-labelledby="import-report-heading" class="panel">
+  <h2 id="import-report-heading">Import a report</h2>
+  <form id="report-form" class="stack" autocomplete="off">
+    <div class="field">
+      <label for="report-file">Exported report (JSON)</label>
+      <input type="file" id="report-file" name="report" accept=".json" required />
+    </div>
+    <div class="actions">
+      <button type="submit">Render imported report</button>
+    </div>
+  </form>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/verifier.js"></script>
+{% endblock %}

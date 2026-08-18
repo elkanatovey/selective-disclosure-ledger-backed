@@ -1,0 +1,21 @@
+<!--
+  Copyright (c) Microsoft Corporation.
+  Licensed under the MIT License.
+-->
+{% extends "base.html" %}
+{% block title %}Roles - SCITT selective disclosure{% endblock %}
+{% block content %}
+<h1>Choose a role</h1>
+<p>
+  The demonstration walks one bug report through three trust boundaries: the researcher
+  who signs it, the response centre that redacts it, and an independent verifier.
+</p>
+<ul class="role-cards">
+  {% for slug, name, description in roles %}
+  <li class="role-card">
+    <h2><a href="/{{ slug }}">{{ name }}</a></h2>
+    <p>{{ description }}</p>
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}

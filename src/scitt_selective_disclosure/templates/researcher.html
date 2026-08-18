@@ -1,0 +1,151 @@
+<!--
+  Copyright (c) Microsoft Corporation.
+  Licensed under the MIT License.
+-->
+{% extends "base.html" %}
+{% block title %}Researcher - SCITT selective disclosure{% endblock %}
+{% block content %}
+<h1>Researcher</h1>
+<p>
+  Enroll once to obtain a short-lived leaf certificate, then submit. Submitting signs
+  the report, registers the exact registered statement with SCITT at
+  <code>{{ scitt_url }}</code>, and only then delivers the full bundle to the mock MSRC
+  service at <code>{{ msrc_url }}</code>.
+</p>
+
+<form id="researcher-form" class="stack" autocomplete="off">
+  <fieldset>
+    <legend>Signing key</legend>
+    <p class="hint">
+      The private key is read by this demo backend to derive the public key and to sign
+      the report. It is never sent to the mock MSRC service or to SCITT. Production
+      clients must sign outside this server.
+    </p>
+    <div class="field">
+      <label for="private-key">Private key file (PEM)</label>
+      <input
+        type="file"
+        id="private-key"
+        name="private_key"
+        accept=".pem,.key"
+        required
+      />
+    </div>
+    <div class="field">
+      <label for="subject">Researcher name</label>
+      <input
+        type="text"
+        id="subject"
+        name="subject"
+        value="Demo researcher"
+        maxlength="120"
+        required
+      />
+    </div>
+    <div class="actions">
+      <button type="button" id="enroll-button">Enroll with mock MSRC</button>
+      <output id="enrollment-status" class="status" aria-live="polite"
+        >Not enrolled.</output
+      >
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Report</legend>
+    <div class="field">
+      <label for="title">Title</label>
+      <input type="text" id="title" name="title" maxlength="200" required />
+    </div>
+    <div class="field">
+      <label for="component">Component</label>
+      <input type="text" id="component" name="component" maxlength="120" required />
+    </div>
+    <div class="field">
+      <label for="severity">Severity</label>
+      <select id="severity" name="severity" required>
+        <option value="critical">critical</option>
+        <option value="important" selected>important</option>
+        <option value="moderate">moderate</option>
+        <option value="low">low</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="fingerprint">Crash fingerprint</label>
+      <input type="text" id="fingerprint" name="fingerprint" maxlength="120" />
+    </div>
+    <div class="field">
+      <label for="body">Report body</label>
+      <textarea
+        id="body"
+        name="body"
+        rows="10"
+        maxlength="{{ max_text_chars }}"
+        required
+      ></textarea>
+      <p class="hint">
+        The body is committed in six character chunks so that MSRC can drop individual
+        passages later.
+      </p>
+    </div>
+    <div class="field">
+      <label for="references">References, one per line</label>
+      <textarea id="references" name="references" rows="3"></textarea>
+    </div>
+  </fieldset>
+
+  <div class="actions">
+    <button type="submit" id="submit-button" disabled>
+      Submit report (register, then deliver)
+    </button>
+  </div>
+</form>
+
+<section aria-labelledby="progress-heading" class="panel">
+  <h2 id="progress-heading">Submission progress</h2>
+  <output id="submit-status" class="status" aria-live="polite"
+    >No submission yet.</output
+  >
+  <ol id="stage-list" class="stage-list"></ol>
+  <div id="recovery" class="recovery" hidden>
+    <h3 id="recovery-heading">Downloads and recovery</h3>
+    <p id="recovery-message"></p>
+    <p class="actions">
+      <a id="bundle-link" class="button-link" href="#" download hidden
+        >Download bundle</a
+      >
+      <a id="statement-link" class="button-link" href="#" download hidden
+        >Download registered statement</a
+      >
+      <a id="transparent-link" class="button-link" href="#" download hidden
+        >Download transparency token</a
+      >
+      <button type="button" id="retry-button" hidden>Retry delivery</button>
+    </p>
+  </div>
+</section>
+
+<section aria-labelledby="submissions-heading" class="panel">
+  <h2 id="submissions-heading">Stored submissions</h2>
+  <p class="actions">
+    <button type="button" id="refresh-submissions">Refresh</button>
+  </p>
+  <table id="submissions-table" class="data-table">
+    <caption>
+      Submissions created by this browser session and earlier runs.
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">Created</th>
+        <th scope="col">Title</th>
+        <th scope="col">Status</th>
+        <th scope="col">SCITT transaction</th>
+        <th scope="col">Downloads</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/researcher.js"></script>
+{% endblock %}
