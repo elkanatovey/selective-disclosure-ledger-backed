@@ -1,0 +1,18 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+.coverage
+.demo/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+*.egg-info/
+*.py[cod]
+/build*/
+dist/
+htmlcov/
+node_modules/
+third_party/scitt-ccf-ledger/venv/
+third_party/scitt-ccf-ledger/workspace/

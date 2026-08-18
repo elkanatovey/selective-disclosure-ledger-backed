@@ -1,0 +1,385 @@
+/*
+ * Copyright (c) Microsoft Corporation.
+ * Licensed under the MIT License.
+ */
+
+:root {
+  --ink: #14171a;
+  --muted: #5b6470;
+  --line: #ccd2d9;
+  --surface: #ffffff;
+  --page: #f4f6f8;
+  --accent: #0b5cab;
+  --pass: #1a7f4b;
+  --fail: #a4262c;
+  --warn: #8a6100;
+  --redacted: #6e2130;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family:
+    "Segoe UI",
+    system-ui,
+    -apple-system,
+    sans-serif;
+  line-height: 1.5;
+}
+
+main {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 1rem 1.25rem 3rem;
+}
+
+.skip-link {
+  position: absolute;
+  left: -999px;
+}
+
+.skip-link:focus {
+  position: static;
+  display: inline-block;
+  padding: 0.5rem;
+  background: var(--accent);
+  color: #fff;
+}
+
+.site-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.site-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.role-nav {
+  display: flex;
+  gap: 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.role-nav a {
+  color: var(--accent);
+  text-decoration: none;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+}
+
+.role-nav a[aria-current="page"] {
+  background: var(--accent);
+  color: #fff;
+}
+
+.demo-banner {
+  margin: 0;
+  padding: 0.5rem 1.25rem;
+  background: #fff4ce;
+  border-bottom: 1px solid #e0c56a;
+  font-size: 0.9rem;
+}
+
+.site-footer {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 0 1.25rem 2rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+}
+
+h2 {
+  font-size: 1.15rem;
+}
+
+.panel,
+fieldset {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 1rem;
+  margin: 1rem 0;
+}
+
+legend {
+  font-weight: 600;
+  padding: 0 0.35rem;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+label {
+  font-weight: 600;
+}
+
+input[type="text"],
+input[type="file"],
+select,
+textarea {
+  font: inherit;
+  padding: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 0.25rem;
+  background: #fff;
+  color: inherit;
+}
+
+textarea {
+  resize: vertical;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0.25rem 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.5rem 0;
+}
+
+button,
+.button-link {
+  font: inherit;
+  padding: 0.45rem 0.9rem;
+  border-radius: 0.25rem;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+
+button[disabled] {
+  background: var(--muted);
+  border-color: var(--muted);
+  cursor: not-allowed;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+.chunk:focus-visible {
+  outline: 3px solid #14171a;
+  outline-offset: 2px;
+}
+
+.status {
+  display: block;
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+  border-left: 4px solid var(--line);
+  background: #fbfbfc;
+}
+
+.status[data-tone="pass"] {
+  border-color: var(--pass);
+}
+
+.status[data-tone="fail"] {
+  border-color: var(--fail);
+}
+
+.status[data-tone="partial"] {
+  border-color: var(--warn);
+}
+
+.stage-list {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+}
+
+.stage-list li {
+  margin-bottom: 0.35rem;
+}
+
+.badge {
+  display: inline-block;
+  min-width: 5rem;
+  text-align: center;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--muted);
+}
+
+.badge[data-status="pass"] {
+  background: var(--pass);
+}
+
+.badge[data-status="fail"] {
+  background: var(--fail);
+}
+
+.badge[data-status="warn"] {
+  background: var(--warn);
+}
+
+.badge[data-status="skipped"],
+.badge[data-status="pending"],
+.badge[data-status="unknown"] {
+  background: var(--muted);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+.data-table caption {
+  text-align: left;
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding-bottom: 0.35rem;
+}
+
+.data-table th,
+.data-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.9rem;
+}
+
+.field-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.field-list li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.field-list .value {
+  color: var(--muted);
+  word-break: break-word;
+}
+
+.body-chunks {
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  background: #fbfbfc;
+  border: 1px solid var(--line);
+  border-radius: 0.25rem;
+  padding: 0.5rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chunk {
+  font: inherit;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: inherit;
+  white-space: pre-wrap;
+  cursor: pointer;
+}
+
+.chunk:hover:not([disabled]) {
+  border-bottom-color: var(--accent);
+}
+
+.chunk[aria-pressed="true"] {
+  background: var(--redacted);
+  color: #fff;
+  border-bottom-color: var(--redacted);
+  text-decoration: line-through;
+}
+
+.chunk[data-disclosed="false"] {
+  background: repeating-linear-gradient(
+    45deg,
+    #e6e8ea,
+    #e6e8ea 4px,
+    #d6d9dc 4px,
+    #d6d9dc 8px
+  );
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.chunk[data-disclosed="false"]::after {
+  content: "[dropped]";
+  font-size: 0.75rem;
+}
+
+@media (prefers-contrast: more) {
+  .chunk[aria-pressed="true"] {
+    outline: 2px solid #000;
+  }
+
+  .chunk[data-disclosed="false"] {
+    background: none;
+    outline: 2px dashed #000;
+  }
+}
+
+.role-cards {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+}
+
+.role-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+.recovery {
+  border-top: 1px solid var(--line);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+}

@@ -1,0 +1,90 @@
+<!--
+  Copyright (c) Microsoft Corporation.
+  Licensed under the MIT License.
+-->
+{% extends "base.html" %}
+{% block title %}MSRC - SCITT selective disclosure{% endblock %}
+{% block content %}
+<h1>MSRC</h1>
+<p>
+  Import a bundle or select one stored by the mock MSRC service at
+  <code>{{ msrc_url }}</code>. Field and body chunk rendering comes from the command
+  line tool: this page only sends back the indices it was given.
+</p>
+
+<section aria-labelledby="import-heading" class="panel">
+  <h2 id="import-heading">Load a bundle</h2>
+  <form id="import-form" class="stack" autocomplete="off">
+    <div class="field">
+      <label for="bundle-file">Bundle file (up to {{ max_bundle_bytes }} bytes)</label>
+      <input
+        type="file"
+        id="bundle-file"
+        name="bundle"
+        accept=".cbor,.cose,.bundle,.sdcwt"
+        required
+      />
+    </div>
+    <div class="actions">
+      <button type="submit">Inspect uploaded bundle</button>
+    </div>
+  </form>
+  <p class="actions">
+    <button type="button" id="refresh-stored">Refresh stored submissions</button>
+  </p>
+  <table id="stored-table" class="data-table">
+    <caption>
+      Submissions delivered to the mock MSRC service.
+    </caption>
+    <thead>
+      <tr>
+        <th scope="col">Created</th>
+        <th scope="col">Title</th>
+        <th scope="col">SCITT transaction</th>
+        <th scope="col">Size</th>
+        <th scope="col">Action</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <output id="load-status" class="status" aria-live="polite">No bundle loaded.</output>
+</section>
+
+<section aria-labelledby="fields-heading" class="panel" id="disclosure-panel" hidden>
+  <h2 id="fields-heading">Field disclosures</h2>
+  <p class="hint">
+    Select the fields to drop. Dropping a disclosure removes the value from the exported
+    bundle without invalidating the researcher signature.
+  </p>
+  <ul id="field-list" class="field-list"></ul>
+
+  <h2 id="body-heading">Body chunks</h2>
+  <p class="hint">
+    Each control below is one six character chunk. Activate a chunk to toggle it, or
+    select a passage with the mouse or keyboard and use
+    <em>Redact selection</em>.
+  </p>
+  <div class="actions">
+    <button type="button" id="redact-selection">Redact selection</button>
+    <button type="button" id="restore-selection">Restore selection</button>
+    <button type="button" id="clear-selection">Clear all redactions</button>
+  </div>
+  <div
+    id="body-chunks"
+    class="body-chunks"
+    role="group"
+    aria-labelledby="body-heading"
+  ></div>
+
+  <div class="actions">
+    <button type="button" id="present-button">Export presented bundle</button>
+    <a id="presentation-link" class="button-link" href="#" download hidden
+      >Download presented bundle</a
+    >
+  </div>
+  <output id="present-status" class="status" aria-live="polite"></output>
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/msrc.js"></script>
+{% endblock %}

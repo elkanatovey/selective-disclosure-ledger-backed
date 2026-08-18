@@ -1,0 +1,72 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+#
+# Runs the two application services from one image. The transparency ledger is
+# not part of this file: it is the upstream scitt-ccf-ledger container that
+# demo/run.sh starts from the pinned submodule.
+#
+# Without a ledger the researcher pipeline stops at SCITT registration and
+# offers a recovery bundle, and the official SCITT check is reported as
+# skipped. Use demo/run.sh for the complete story.
+
+services:
+  mock-msrc:
+    build:
+      context: .
+      args:
+        CCF_VERSION: "7.0.10"
+    image: scitt-selective-disclosure:demo
+    command:
+      - /opt/venv/bin/python
+      - -m
+      - uvicorn
+      - --factory
+      - scitt_selective_disclosure.mock_msrc.app:create_app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8081"
+    environment:
+      SDC_DATA_DIR: /var/lib/scitt-sd/mock
+      SDC_MSRC_ROOT_KEY: /var/lib/scitt-sd/ca/root.key
+      SDC_MSRC_ROOT_CERT: /var/lib/scitt-sd/ca/root.pem
+    volumes:
+      - msrc-state:/var/lib/scitt-sd
+    ports:
+      - "127.0.0.1:8081:8081"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8081/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      args:
+        CCF_VERSION: "7.0.10"
+    image: scitt-selective-disclosure:demo
+    depends_on:
+      mock-msrc:
+        condition: service_healthy
+    environment:
+      SDC_DATA_DIR: /var/lib/scitt-sd/web
+      SDC_MSRC_URL: http://mock-msrc:8081
+      SDC_SCITT_URL: ${SDC_SCITT_URL:-https://host.docker.internal:8000}
+      SDC_SCITT_INSECURE: "1"
+      # The official verifier lives in the pinned submodule's own virtual
+      # environment on the host. Mount it read only to enable the SCITT check.
+      SDC_SCITT_VERIFIER_PYTHON: /opt/scitt-ledger/venv/bin/python
+      SDC_SCITT_VERIFIER_WRAPPER: /app/demo/official_verify.py
+    volumes:
+      - web-state:/var/lib/scitt-sd
+      - ./demo:/app/demo:ro
+      - ./third_party/scitt-ccf-ledger:/opt/scitt-ledger:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+
+volumes:
+  msrc-state:
+  web-state:

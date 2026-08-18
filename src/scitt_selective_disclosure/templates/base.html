@@ -1,0 +1,44 @@
+<!--
+  Copyright (c) Microsoft Corporation.
+  Licensed under the MIT License.
+-->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}SCITT selective disclosure{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/app.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to main content</a>
+    <header class="site-header">
+      <p class="site-title">SCITT selective-disclosure demo</p>
+      <nav aria-label="Roles">
+        <ul class="role-nav">
+          <li>
+            <a href="/researcher" {% if active == "researcher" %}aria-current="page"{% endif %}>Researcher</a>
+          </li>
+          <li>
+            <a href="/msrc" {% if active == "msrc" %}aria-current="page"{% endif %}>MSRC</a>
+          </li>
+          <li>
+            <a href="/verifier" {% if active == "verifier" %}aria-current="page"{% endif %}>Verifier</a>
+          </li>
+        </ul>
+      </nav>
+    </header>
+    <p class="demo-banner" role="note">
+      Demonstration only. This deployment makes no production security claims.
+    </p>
+    <main id="main">{% block content %}{% endblock %}</main>
+    <footer class="site-footer">
+      <p>
+        All cryptographic work is performed by the C++ selective-disclosure tool. This
+        control plane only moves opaque bytes.
+      </p>
+    </footer>
+    <script src="/static/js/common.js"></script>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>
