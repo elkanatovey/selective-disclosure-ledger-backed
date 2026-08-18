@@ -26,11 +26,6 @@ section {
   margin-top: 1rem;
 }
 
-.note {
-  color: #444;
-  font-size: 0.9rem;
-}
-
 .state {
   font-family: ui-monospace, monospace;
   font-size: 0.85rem;
