@@ -252,11 +252,14 @@ build_ledger_image() {
         return 0
     fi
     log "building the ledger image ${DOCKER_TAG} (this takes a while)"
-    docker build --tag "${DOCKER_TAG}" \
+    docker build --progress=plain --tag "${DOCKER_TAG}" \
         --build-arg "CCF_VERSION=${CCF_VERSION}" \
         --file "${SUBMODULE_DIR}/docker/Dockerfile" \
         "${SUBMODULE_DIR}" >"${LOG_DIR}/ledger-build.log" 2>&1 ||
-        die "building ${DOCKER_TAG} failed. See ${LOG_DIR}/ledger-build.log."
+        {
+            cat "${LOG_DIR}/ledger-build.log" >&2 || true
+            die "building ${DOCKER_TAG} failed. See ${LOG_DIR}/ledger-build.log."
+        }
 }
 
 start_ledger() {
