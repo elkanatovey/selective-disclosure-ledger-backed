@@ -27,6 +27,11 @@ namespace sdcwt
   // CWT claim label used in the clear by the report profile (RFC 8392).
   inline constexpr int64_t CWT_IAT = 6; // issued-at
 
+  // Confirmation claim (RFC 8747): names the key a holder must later prove it
+  // controls. Its `1` member carries a COSE_Key.
+  inline constexpr int64_t CWT_CNF = 8;
+  inline constexpr int64_t CNF_COSE_KEY = 1;
+
   // Redaction hash algorithm. The enum values are the COSE hash-algorithm
   // identifiers written into the `sd_alg` protected header.
   enum class HashAlg : int64_t
@@ -158,6 +163,10 @@ namespace sdcwt
   // unprotected entry. An empty `items` removes the entry. This is how a
   // transparency service attaches receipts (label 394) to a statement it has
   // registered without invalidating the issuer's signature.
+  //
+  // CCF's ccf::cose::edit::set_unprotected_header replaces the whole
+  // unprotected header rather than merging into it, so it would drop the
+  // disclosures (17) when adding a receipt (394), and vice versa.
   // Throws std::runtime_error on a malformed token.
   std::vector<uint8_t> set_unprotected_bstr_array(
     std::span<const uint8_t> token,

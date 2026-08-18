@@ -211,13 +211,15 @@ PYBIND11_MODULE(_native, module)
       const std::string& report_json,
       const py::bytes& public_key,
       const py::bytes& leaf_cert,
-      const py::bytes& root_cert) {
+      const py::bytes& root_cert,
+      const py::bytes& confirmation_key) {
       const auto key_span = as_span(public_key);
       const auto leaf_span = as_span(leaf_cert);
       const auto root_span = as_span(root_cert);
+      const auto confirmation_span = as_span(confirmation_key);
       auto prepared = without_gil([&] {
         return native::prepare_statement(
-          report_json, key_span, leaf_span, root_span);
+          report_json, key_span, leaf_span, root_span, confirmation_span);
       });
       py::dict result;
       result["to_be_signed"] = to_bytes(prepared.to_be_signed);
@@ -234,12 +236,17 @@ PYBIND11_MODULE(_native, module)
     py::arg("public_key"),
     py::arg("leaf_cert"),
     py::arg("root_cert"),
+    py::arg("confirmation_key") = py::bytes(),
     "Build a redacted SD-CWT for a holder that keeps its own key.\n\n"
-    "Takes the holder's certified public key, never a private key. Returns "
-    "{'to_be_signed': bytes, 'protected_header': bytes, 'payload': bytes, "
-    "'disclosures': bytes, 'disclosure_count': int, 'body_chunk_count': int, "
-    "'reference_count': int, 'issuer_did': str}. The holder signs "
-    "'to_be_signed' and nothing else; pass the result to attach_signature.");
+    "Takes the holder's certified public key, never a private key. "
+    "`confirmation_key` is the EC public key of the party that will later "
+    "release the disclosures; it is published in the clear as the `cnf` "
+    "claim, so a release signed by the matching private key is attributable "
+    "to that party. Returns {'to_be_signed': bytes, 'protected_header': "
+    "bytes, 'payload': bytes, 'disclosures': bytes, 'disclosure_count': int, "
+    "'body_chunk_count': int, 'reference_count': int, 'issuer_did': str}. The "
+    "holder signs 'to_be_signed' and nothing else; pass the result to "
+    "attach_signature.");
 
   module.def(
     "attach_signature",

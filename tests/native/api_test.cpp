@@ -137,6 +137,62 @@ namespace
     return ccf::crypto::ecdsa_sig_der_to_p1363(der, curve);
   }
 
+  struct CnfKey
+  {
+    bool present = false;
+    int64_t kty = 0;
+    int64_t crv = 0;
+    Bytes x;
+    Bytes y;
+  };
+
+  // The COSE_Key the payload's cnf claim carries, if it has one.
+  CnfKey cnf_cose_key(const Bytes& payload)
+  {
+    namespace cbor = ccf::cbor;
+    CnfKey out;
+    const auto root = cbor::parse(payload);
+    for (const auto& [label, value] : std::get<cbor::Map>(root->value).items)
+    {
+      if (
+        !std::holds_alternative<cbor::Signed>(label->value) ||
+        label->as_signed() != sdcwt::CWT_CNF)
+      {
+        continue;
+      }
+      for (const auto& [member, key] : std::get<cbor::Map>(value->value).items)
+      {
+        if (member->as_signed() != sdcwt::CNF_COSE_KEY)
+        {
+          continue;
+        }
+        out.present = true;
+        for (const auto& [parameter, entry] :
+             std::get<cbor::Map>(key->value).items)
+        {
+          switch (parameter->as_signed())
+          {
+            case sdcwt::COSE_KEY_KTY:
+              out.kty = entry->as_signed();
+              break;
+            case sdcwt::COSE_KEY_CRV:
+              out.crv = entry->as_signed();
+              break;
+            case sdcwt::COSE_KEY_X:
+              out.x = scitt_sd::testing::copy_bytes(entry);
+              break;
+            case sdcwt::COSE_KEY_Y:
+              out.y = scitt_sd::testing::copy_bytes(entry);
+              break;
+            default:
+              break;
+          }
+        }
+      }
+    }
+    return out;
+  }
+
   json check_of(const json& document, const std::string& id)
   {
     for (const auto& check : document.at("checks"))
@@ -487,6 +543,88 @@ TEST(PrepareStatement, RefusesAPublicKeyTheCertificateDoesNotCertify)
   EXPECT_THROW(
     (void)prepare_statement(
       report_document(), stranger, held.leaf_cert, held.root.certificate),
+    InvalidInput);
+}
+
+TEST(PrepareStatement, PublishesTheDisclosersKeyInTheClearAsCnf)
+{
+  const auto held = hold_a_key();
+  // The discloser's key is its own, not the CA key that endorsed the reporter.
+  const auto disclosure_key = generate_private_key();
+  const auto disclosure_public = derive_public_key(disclosure_key);
+
+  const auto prepared = prepare_statement(
+    report_document(),
+    held.public_key,
+    held.leaf_cert,
+    held.root.certificate,
+    disclosure_public);
+
+  const auto cose_key = cnf_cose_key(prepared.payload);
+  ASSERT_TRUE(cose_key.present) << "no cnf claim in the payload";
+
+  const auto expected =
+    ccf::crypto::make_ec_public_key(ccf::crypto::Pem(disclosure_public))
+      ->coordinates();
+  EXPECT_EQ(cose_key.kty, sdcwt::COSE_KTY_EC2);
+  EXPECT_EQ(cose_key.crv, 1); // P-256
+  EXPECT_EQ(cose_key.x, expected.x);
+  EXPECT_EQ(cose_key.y, expected.y);
+}
+
+TEST(PrepareStatement, OmitsCnfWhenNoDiscloserIsNamed)
+{
+  const auto held = hold_a_key();
+  const auto prepared = prepare_statement(
+    report_document(), held.public_key, held.leaf_cert, held.root.certificate);
+  EXPECT_FALSE(cnf_cose_key(prepared.payload).present);
+}
+
+TEST(PrepareStatement, NamingADiscloserKeepsTheBundleVerifiableAndReadable)
+{
+  const auto held = hold_a_key();
+  const auto disclosure_public = derive_public_key(generate_private_key());
+
+  const auto prepared = prepare_statement(
+    report_document(),
+    held.public_key,
+    held.leaf_cert,
+    held.root.certificate,
+    disclosure_public);
+  const auto statement = attach_signature(
+    prepared.protected_header,
+    prepared.payload,
+    sign_detached(held.private_key, prepared.to_be_signed));
+  const auto registration =
+    mock_register_statement(statement, held.root.private_key);
+  const auto bundle = create_bundle(
+                        statement,
+                        registration.transparent_statement,
+                        prepared.disclosure_set,
+                        "https://transparency.example",
+                        "2.14",
+                        1700000100)
+                        .bundle;
+
+  const auto outcome = verify_bundle(bundle, held.root.certificate);
+  EXPECT_TRUE(outcome.passed) << outcome.reason;
+
+  // inspect_bundle verifies before it renders, so a cnf claim the verifier
+  // refused would surface here rather than in the browser.
+  const auto rendered = json::parse(inspect_bundle(bundle));
+  EXPECT_EQ(field_of(rendered, "title").at("value"), "Heap overflow in parser");
+}
+
+TEST(PrepareStatement, RefusesAConfirmationKeyThatIsNotAPublicKey)
+{
+  const auto held = hold_a_key();
+  EXPECT_THROW(
+    (void)prepare_statement(
+      report_document(),
+      held.public_key,
+      held.leaf_cert,
+      held.root.certificate,
+      generate_private_key()),
     InvalidInput);
 }
 

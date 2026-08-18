@@ -20,6 +20,7 @@ namespace scitt_sd::report
   namespace label
   {
     inline constexpr int64_t IAT = sdcwt::CWT_IAT; // 6, clear
+    inline constexpr int64_t CNF = sdcwt::CWT_CNF; // 8, clear
     inline constexpr int64_t TITLE = 1001;
     inline constexpr int64_t BODY = 1002;
     inline constexpr int64_t COMPONENT = 1003;
@@ -49,6 +50,11 @@ namespace scitt_sd::report
     std::string severity;
     std::vector<uint8_t> fingerprint; // opaque report fingerprint
     std::vector<std::string> references;
+    // The party that will later release the disclosures, as an EC public key
+    // in PEM. It is published in the clear as the `cnf` claim, so a release
+    // signed by the matching private key is attributable to that party and to
+    // nobody else. Empty omits the claim.
+    std::vector<uint8_t> confirmation_key_pem;
   };
 
   struct IssuedReport

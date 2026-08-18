@@ -723,14 +723,35 @@ namespace scitt_sd::native
     std::string_view report_json,
     std::span<const uint8_t> public_key_pem,
     std::span<const uint8_t> leaf_cert_pem,
-    std::span<const uint8_t> root_cert_pem)
+    std::span<const uint8_t> root_cert_pem,
+    std::span<const uint8_t> confirmation_key_pem)
   {
     require_size(report_json.size(), limits::MAX_JSON_BYTES, "the report");
-    const auto input = parse_report_json(report_json, now_seconds());
+    auto input = parse_report_json(report_json, now_seconds());
 
     const auto public_key = to_pem(public_key_pem, "the public key");
     const auto leaf_der = to_cert_der(leaf_cert_pem, "the leaf certificate");
     const auto root_der = to_cert_der(root_cert_pem, "the root certificate");
+
+    if (!confirmation_key_pem.empty())
+    {
+      // Refused here rather than deep in issuance, so a caller that meant to
+      // name a discloser is told when it named something unusable.
+      const auto confirmation =
+        to_pem(confirmation_key_pem, "the confirmation key");
+      try
+      {
+        (void)ccf::crypto::make_ec_public_key(confirmation);
+      }
+      catch (const std::exception& e)
+      {
+        throw InvalidInput(
+          std::string("the confirmation key is not an EC public key: ") +
+          e.what());
+      }
+      input.confirmation_key_pem.assign(
+        confirmation_key_pem.begin(), confirmation_key_pem.end());
+    }
 
     ccf::crypto::ECPublicKeyPtr holder;
     try

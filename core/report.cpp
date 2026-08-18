@@ -5,6 +5,8 @@
 #include "core/report_internal.h"
 
 #include <algorithm>
+#include <ccf/crypto/ec_public_key.h>
+#include <ccf/crypto/pem.h>
 #include <stdexcept>
 
 namespace scitt_sd::report
@@ -108,6 +110,18 @@ namespace scitt_sd::report
         {label::SEVERITY, sdcwt::CborValue::Text(input.severity)},
         {label::FINGERPRINT, sdcwt::CborValue::Bytes(input.fingerprint)},
         {label::REFERENCES, sdcwt::value::text_array(input.references)}};
+
+      // The confirmation key stays in the clear: a release signed with it can
+      // only be checked against a statement that names it.
+      if (!input.confirmation_key_pem.empty())
+      {
+        sdcwt::CborValue confirmation = sdcwt::CborValue::Map({});
+        confirmation.map_put(
+          sdcwt::CborKey(sdcwt::CNF_COSE_KEY),
+          sdcwt::cose_key_ec2(*ccf::crypto::make_ec_public_key(
+            ccf::crypto::Pem(input.confirmation_key_pem))));
+        out.claims.push_back({label::CNF, std::move(confirmation)});
+      }
 
       // Every content claim is redacted, and so is every body chunk and
       // reference element: revealing a parent still leaves its children hidden

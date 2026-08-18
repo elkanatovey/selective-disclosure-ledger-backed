@@ -31,6 +31,38 @@ namespace sdcwt
     }
   }
 
+  int64_t cose_crv_for_curve(ccf::crypto::CurveID curve)
+  {
+    switch (curve)
+    {
+      case ccf::crypto::CurveID::SECP256R1:
+        return 1;
+      case ccf::crypto::CurveID::SECP384R1:
+        return 2;
+      case ccf::crypto::CurveID::SECP521R1:
+        return 3;
+      case ccf::crypto::CurveID::NONE:
+      case ccf::crypto::CurveID::CURVE25519:
+      case ccf::crypto::CurveID::X25519:
+      default:
+        throw std::invalid_argument(
+          "unsupported COSE_Key curve (expected P-256/P-384/P-521)");
+    }
+  }
+
+  CborValue cose_key_ec2(const ccf::crypto::ECPublicKey& key)
+  {
+    const auto crv = cose_crv_for_curve(key.get_curve_id());
+    const auto coordinates = key.coordinates();
+
+    CborValue cose_key = CborValue::Map({});
+    cose_key.map_put(CborKey(COSE_KEY_KTY), CborValue::Int(COSE_KTY_EC2));
+    cose_key.map_put(CborKey(COSE_KEY_CRV), CborValue::Int(crv));
+    cose_key.map_put(CborKey(COSE_KEY_X), CborValue::Bytes(coordinates.x));
+    cose_key.map_put(CborKey(COSE_KEY_Y), CborValue::Bytes(coordinates.y));
+    return cose_key;
+  }
+
   void append_header_entries(CborValue& header, const HeaderEntries& extra)
   {
     if (header.kind != CborValue::Kind::Map)

@@ -49,6 +49,13 @@ class MockMsrc:
         self._root_key = identity["private_key"]
         self.root_cert: bytes = identity["certificate"]
         self.issuer_did: str = identity["issuer_did"]
+        # The key MSRC signs disclosure releases with. Deliberately not the CA
+        # key: releasing what a report said is a different authority from
+        # endorsing who wrote it.
+        self._disclosure_key = _native.generate_private_key()
+        self.disclosure_public_key: bytes = _native.derive_public_key(
+            self._disclosure_key
+        )
         self.enrollments: dict[str, Enrollment] = {}
         self.submissions: dict[str, Submission] = {}
 

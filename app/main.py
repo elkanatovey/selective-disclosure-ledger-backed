@@ -124,7 +124,11 @@ def create_app() -> FastAPI:
         )
         try:
             built = _native.prepare_statement(
-                report, record.public_key, record.leaf_cert, msrc.root_cert
+                report,
+                record.public_key,
+                record.leaf_cert,
+                msrc.root_cert,
+                msrc.disclosure_public_key,
             )
         except ValueError as error:
             raise HTTPException(400, f"The report was refused: {error}") from error

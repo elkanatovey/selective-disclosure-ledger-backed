@@ -505,10 +505,12 @@ namespace scitt_sd::verify
     {
       int64_t issued_at = 0;
       std::vector<std::vector<uint8_t>> commitments;
+      bool names_a_discloser = false; // a cnf claim was present
     };
 
-    // The registered payload must hold `iat` in the clear and nothing else:
-    // every content claim is present only as a Redacted Claim Hash.
+    // The registered payload must hold `iat`, optionally `cnf`, and nothing
+    // else in the clear: every content claim is present only as a Redacted
+    // Claim Hash.
     ClearPayload parse_clear_payload(
       std::span<const uint8_t> encoded, sdcwt::HashAlg sd_alg)
     {
@@ -518,8 +520,8 @@ namespace scitt_sd::verify
         "payload must be a map");
       const auto& map = std::get<cbor::Map>(root->value);
       require(
-        map.items.size() == 2,
-        "payload must carry exactly iat and the redacted claim hashes");
+        map.items.size() == 2 || map.items.size() == 3,
+        "payload must carry iat, the redacted claim hashes and at most cnf");
 
       ClearPayload out;
       bool seen_iat = false;
@@ -533,6 +535,27 @@ namespace scitt_sd::verify
           require(is_signed(value), "iat (6) must be an integer");
           out.issued_at = value->as_signed();
           require(out.issued_at >= 0, "iat (6) must not be negative");
+          continue;
+        }
+        if (is_signed(key) && key->as_signed() == sdcwt::CWT_CNF)
+        {
+          require(!out.names_a_discloser, "duplicate cnf (8) in payload");
+          require(
+            std::holds_alternative<cbor::Map>(value->value),
+            "cnf (8) must be a map");
+          const auto& confirmation = std::get<cbor::Map>(value->value);
+          require(
+            confirmation.items.size() == 1,
+            "cnf (8) must carry exactly one member");
+          require(
+            is_signed(confirmation.items[0].first) &&
+              confirmation.items[0].first->as_signed() == sdcwt::CNF_COSE_KEY,
+            "cnf (8) must carry a COSE_Key (1)");
+          require(
+            std::holds_alternative<cbor::Map>(
+              confirmation.items[0].second->value),
+            "the cnf COSE_Key must be a map");
+          out.names_a_discloser = true;
           continue;
         }
         if (
@@ -559,7 +582,7 @@ namespace scitt_sd::verify
       }
       require(
         seen_iat && seen_hashes,
-        "payload must carry exactly iat and the redacted claim hashes");
+        "payload must carry iat and the redacted claim hashes");
       require(
         out.commitments.size() == report::CONTENT_LABELS.size(),
         "payload does not redact exactly the profile's content claims");

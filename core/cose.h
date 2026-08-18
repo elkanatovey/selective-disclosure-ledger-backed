@@ -5,6 +5,7 @@
 #include "core/cbor_value.h"
 
 #include <ccf/crypto/ec_key_pair.h>
+#include <ccf/crypto/ec_public_key.h>
 #include <cstdint>
 #include <span>
 #include <utility>
@@ -21,6 +22,14 @@ namespace sdcwt
   inline constexpr int64_t COSE_HEADER_ALG = 1;
   inline constexpr int64_t COSE_HEADER_CRIT = 2;
 
+  // COSE_Key parameters for an EC2 key (RFC 9052 section 7, RFC 9053
+  // section 7.1).
+  inline constexpr int64_t COSE_KEY_KTY = 1;
+  inline constexpr int64_t COSE_KEY_CRV = -1;
+  inline constexpr int64_t COSE_KEY_X = -2;
+  inline constexpr int64_t COSE_KEY_Y = -3;
+  inline constexpr int64_t COSE_KTY_EC2 = 2;
+
   // Extra protected-header entries supplied by a caller (for example the SCITT
   // X.509 profile headers). Entries are CDE-sorted on encoding, so the order
   // given here is irrelevant.
@@ -29,6 +38,14 @@ namespace sdcwt
   // Map an EC curve to its COSE ECDSA signing algorithm id (ES256/384/512).
   // Throws std::invalid_argument for non-ECDSA / unsupported curves.
   int64_t cose_es_alg_for_curve(ccf::crypto::CurveID curve);
+
+  // Map an EC curve to its COSE curve id (P-256 -> 1, P-384 -> 2, P-521 -> 3).
+  // Throws std::invalid_argument for an unsupported curve.
+  int64_t cose_crv_for_curve(ccf::crypto::CurveID curve);
+
+  // The COSE_Key for an EC public key: {1: 2, -1: crv, -2: x, -3: y}.
+  // Throws std::invalid_argument for an unsupported curve.
+  CborValue cose_key_ec2(const ccf::crypto::ECPublicKey& key);
 
   // Append `extra` to a protected-header map, rejecting a label that the
   // framework already set. Throws std::invalid_argument on a duplicate label.

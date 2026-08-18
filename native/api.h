@@ -137,6 +137,11 @@ namespace scitt_sd::native
   // Only the holder's certified public key is needed, so no private key
   // reaches this process at all.
   //
+  // `confirmation_key_pem` is the EC public key of the party that will later
+  // release the disclosures. It is published in the clear as the `cnf` claim,
+  // so that a release signed by the matching private key is attributable to
+  // that party. Empty omits the claim.
+  //
   // Throws InvalidInput for a malformed report, a malformed public key or
   // certificate, a leaf certificate that does not certify the public key, or
   // a key on a curve this profile cannot use.
@@ -144,7 +149,8 @@ namespace scitt_sd::native
     std::string_view report_json,
     std::span<const uint8_t> public_key_pem,
     std::span<const uint8_t> leaf_cert_pem,
-    std::span<const uint8_t> root_cert_pem);
+    std::span<const uint8_t> root_cert_pem,
+    std::span<const uint8_t> confirmation_key_pem = {});
 
   // Combine a prepared statement with the holder's signature over its
   // `to_be_signed` bytes, producing the exact bytes a transparency service
