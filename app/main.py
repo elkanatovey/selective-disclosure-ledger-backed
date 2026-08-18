@@ -22,7 +22,7 @@ from pathlib import Path
 
 import _native
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
@@ -203,5 +203,22 @@ def create_app() -> FastAPI:
             "txid": record.txid,
             "inspection": json.loads(_native.inspect_bundle(record.bundle)),
         }
+
+    @app.get("/api/submissions/{submission_id}/bundle")
+    async def download(submission_id: str) -> Response:
+        """The exact bundle bytes MSRC received, for offline verification."""
+        record = msrc.submissions.get(submission_id)
+        if record is None:
+            raise HTTPException(404, "No such submission.")
+        # The id is server-generated hex, so it is safe in a filename.
+        return Response(
+            content=record.bundle,
+            media_type="application/cbor",
+            headers={
+                "content-disposition": (
+                    f'attachment; filename="{record.submission_id}.cbor"'
+                )
+            },
+        )
 
     return app

@@ -13,14 +13,20 @@
   <body>
     <h1>Submit a report</h1>
     <p class="note">
-      The signing key is generated in this tab and never leaves it. The server
-      sends back the exact bytes to sign and never sees a private key.
+      The signing key is generated or imported in this tab and never leaves it.
+      The server sends back the exact bytes to sign and never sees a private
+      key.
     </p>
 
     <section>
       <h2>1. Key and enrollment</h2>
+      <label for="key-file">
+        Your private key (PEM, PKCS#8, P-256). Leave empty for a fresh
+        ephemeral key.
+      </label>
+      <input type="file" id="key-file" accept=".pem,.key" />
       <p id="key-state" class="state">No key yet.</p>
-      <button id="enroll">Generate key and enroll</button>
+      <button id="enroll">Enroll</button>
     </section>
 
     <section>
@@ -56,6 +62,7 @@ CVE-2024-0001</textarea
       <h2>3. Result</h2>
       <ol id="stages"></ol>
       <p id="outcome" class="state"></p>
+      <p><a id="bundle-link" download hidden>Download the proof bundle</a></p>
       <pre id="inspection"></pre>
     </section>
 
