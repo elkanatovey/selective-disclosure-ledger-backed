@@ -1,0 +1,60 @@
+; Copyright (c) Microsoft Corporation.
+; Licensed under the MIT License.
+;
+; CDDL (RFC 8610) for the offline proof bundle: everything a verifier needs to
+; check a selectively disclosed bug report without contacting the transparency
+; service. Encoded and strictly decoded by core/bundle.h; the statements it
+; carries are described in spec/report-sd-cwt.cddl.
+
+; ==========================================================================
+; A CBOR map with exactly seven integer-labelled entries. A decoder rejects a
+; missing, duplicate or unknown label, a wrong type, an out-of-range size and
+; an unsupported version, because a bundle arrives from an untrusted source.
+; Labels are emitted in ascending order, which is CDE order for these keys.
+; ==========================================================================
+
+proof-bundle = {
+  1 : version,
+  2 : registered-statement,
+  3 : transparent-statement,
+  4 : disclosures,
+  5 : scitt-url,
+  6 : txid,
+  7 : timestamp,
+}
+
+; Bundle format version. Only 1 is accepted.
+version = 1
+
+; The exact bytes that were registered: a redacted statement with no
+; disclosures attached. The receipt is verified against these bytes, so they
+; are carried verbatim and never re-encoded. At most 4 MiB.
+registered-statement = bstr .cbor statement
+
+; The same signed statement with the transparency service's receipts (394) in
+; its unprotected header; it may also carry disclosures (17). Its protected
+; header, payload and signature are byte-identical to the registered
+; statement's. At most 4 MiB.
+transparent-statement = bstr .cbor statement
+
+; The disclosures being revealed, each committed to by the payload, with a
+; parent listed before any of its children. At most 4096 entries of at most
+; 256 KiB each; may be empty, which proves registration and discloses nothing.
+disclosures = [* disclosure]
+
+; Where the statement was registered, for provenance only: it is never
+; contacted during verification. At most 2048 characters.
+scitt-url = tstr
+
+; The transparency service transaction id, e.g. "2.14". At most 128
+; characters.
+txid = tstr
+
+; When the bundle was produced, seconds since the epoch. Advisory: the
+; verifier does not trust it.
+timestamp = uint
+
+; Defined in spec/report-sd-cwt.cddl; repeated here so this schema is
+; self-contained.
+statement = #6.18([bstr, { * int => any }, bstr, bstr])
+disclosure = bstr

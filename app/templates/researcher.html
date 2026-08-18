@@ -1,0 +1,64 @@
+<!--
+  Copyright (c) Microsoft Corporation.
+  Licensed under the MIT License.
+-->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Researcher</title>
+    <link rel="stylesheet" href="/static/researcher.css" />
+  </head>
+  <body>
+    <h1>Submit a report</h1>
+    <p class="note">
+      The signing key is generated in this tab and never leaves it. The server
+      sends back the exact bytes to sign and never sees a private key.
+    </p>
+
+    <section>
+      <h2>1. Key and enrollment</h2>
+      <p id="key-state" class="state">No key yet.</p>
+      <button id="enroll">Generate key and enroll</button>
+    </section>
+
+    <section>
+      <h2>2. Report</h2>
+      <form id="report">
+        <label for="title">Title</label>
+        <input id="title" name="title" value="Heap overflow in parser" required />
+
+        <label for="body">Body</label>
+        <textarea id="body" name="body" rows="4" required>
+Reachable from untrusted input during header parsing.</textarea
+        >
+
+        <label for="component">Component</label>
+        <input id="component" name="component" value="parser" required />
+
+        <label for="severity">Severity</label>
+        <input id="severity" name="severity" value="high" required />
+
+        <label for="fingerprint">Fingerprint</label>
+        <input id="fingerprint" name="fingerprint" value="abc123" />
+
+        <label for="references">References (one per line)</label>
+        <textarea id="references" name="references" rows="2">
+CVE-2024-0001</textarea
+        >
+
+        <button id="submit" type="submit" disabled>Sign and submit</button>
+      </form>
+    </section>
+
+    <section>
+      <h2>3. Result</h2>
+      <ol id="stages"></ol>
+      <p id="outcome" class="state"></p>
+      <pre id="inspection"></pre>
+    </section>
+
+    <script src="/static/researcher.js"></script>
+  </body>
+</html>
