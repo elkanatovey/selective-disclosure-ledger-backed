@@ -125,7 +125,6 @@ $("enroll").addEventListener("click", async () => {
 $("report").addEventListener("submit", async (event) => {
   event.preventDefault();
   $("outcome").textContent = "";
-  $("inspection").textContent = "";
   $("bundle-link").hidden = true;
   setStages([]);
 
@@ -169,12 +168,6 @@ $("report").addEventListener("submit", async (event) => {
     link.href = `/api/submissions/${result.submission_id}/bundle`;
     link.textContent = `Download the proof bundle (${result.bundle_bytes} bytes)`;
     link.hidden = false;
-
-    const inspected = await fetch(`/api/submissions/${result.submission_id}`);
-    if (inspected.ok) {
-      const document_ = await inspected.json();
-      $("inspection").textContent = JSON.stringify(document_.inspection, null, 2);
-    }
   } catch (error) {
     $("outcome").textContent = `Failed: ${error.message}`;
   }

@@ -56,10 +56,3 @@ button {
   font: inherit;
   padding: 0.4rem 0.8rem;
 }
-
-pre {
-  background: #f5f5f5;
-  padding: 0.6rem;
-  overflow-x: auto;
-  font-size: 0.8rem;
-}
