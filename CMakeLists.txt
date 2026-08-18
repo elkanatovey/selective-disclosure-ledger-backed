@@ -102,6 +102,53 @@ target_compile_options(
   scitt_sd_core PRIVATE -Wall -Wextra -Werror -Wshadow -Wundef
 )
 
+# CLI11 parses the command line. CCF does not export its own copy, so a system
+# package is used when one is installed and the pinned release (the version CCF
+# vendors) is fetched otherwise, as with GoogleTest below.
+find_package(CLI11 QUIET)
+if(NOT TARGET CLI11::CLI11)
+  include(FetchContent)
+  FetchContent_Declare(
+    cli11
+    GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
+    GIT_TAG v2.6.1
+  )
+  FetchContent_MakeAvailable(cli11)
+endif()
+
+# Everything the command line tool does, minus the command line itself, so the
+# tests can drive the commands directly.
+add_library(
+  scitt_sd_cli STATIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/cli/commands.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/cli/disclosure_set.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/cli/files.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/cli/identity.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/cli/report_json.cpp
+)
+target_link_libraries(scitt_sd_cli PUBLIC scitt_sd_core)
+target_compile_options(
+  scitt_sd_cli PRIVATE -Wall -Wextra -Werror -Wshadow -Wundef
+)
+
+add_executable(scitt_sd_tool ${CMAKE_CURRENT_SOURCE_DIR}/cli/main.cpp)
+# The control plane looks for `scitt-sd` in the build directory.
+set_target_properties(scitt_sd_tool PROPERTIES OUTPUT_NAME scitt-sd)
+target_link_libraries(scitt_sd_tool PRIVATE scitt_sd_cli CLI11::CLI11)
+target_compile_definitions(
+  scitt_sd_tool PRIVATE SCITT_SD_VERSION="${PROJECT_VERSION}"
+)
+target_compile_options(
+  scitt_sd_tool PRIVATE -Wall -Wextra -Werror -Wshadow -Wundef
+)
+
+# The container image installs only the tool (`cmake --install --component
+# tool`) and falls back to copying the binary when no such component exists.
+install(
+  TARGETS scitt_sd_tool
+  RUNTIME DESTINATION bin COMPONENT tool
+)
+
 option(BUILD_TESTS "Build the host-side C++ unit tests" OFF)
 
 if(BUILD_TESTS)
@@ -144,4 +191,26 @@ if(BUILD_TESTS)
   )
   target_compile_options(core_tests PRIVATE -Wall -Wextra -Werror -Wshadow)
   add_test(NAME core_tests COMMAND core_tests)
+
+  file(GLOB CLI_TEST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/tests/cli/*.cpp)
+  scitt_sd_require_sources(
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/cli" CLI_TEST_SOURCES
+  )
+  add_executable(cli_tests ${CLI_TEST_SOURCES})
+  target_link_libraries(
+    cli_tests PRIVATE scitt_sd_cli GTest::gtest GTest::gtest_main
+  )
+  target_compile_options(cli_tests PRIVATE -Wall -Wextra -Werror -Wshadow)
+  # The tests drive the real executable as well as the command functions, and
+  # they write their scratch files below the build directory.
+  add_dependencies(cli_tests scitt_sd_tool)
+  add_test(
+    NAME cli_tests
+    COMMAND cli_tests
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  )
+  set_tests_properties(
+    cli_tests PROPERTIES ENVIRONMENT
+                         "SCITT_SD_TOOL=$<TARGET_FILE:scitt_sd_tool>"
+  )
 endif()
