@@ -1,0 +1,97 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+name: evercbor-core
+
+on:
+  push:
+    paths:
+      - "core/**"
+      - "tests/core/**"
+      - "spec/**"
+      - "CMakeLists.txt"
+      - "scripts/core_tests.sh"
+      - ".clang-format"
+      - ".github/workflows/core.yml"
+  pull_request:
+    paths:
+      - "core/**"
+      - "tests/core/**"
+      - "spec/**"
+      - "CMakeLists.txt"
+      - "scripts/core_tests.sh"
+      - ".clang-format"
+      - ".github/workflows/core.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format-18
+      - name: Check C++ formatting
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(
+            git ls-files core tests/core |
+              awk '/\.(c|cc|cpp|h|hpp)$/'
+          )
+          clang-format-18 -n -Werror -style=file "${files[@]}"
+
+  build-test:
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/azurelinux/base/core:3.0
+      options: --user root
+    env:
+      CCF_VERSION: "7.0.10"
+    steps:
+      - name: Install build environment and CCF
+        run: |
+          set -euo pipefail
+          gpg --import /etc/pki/rpm-gpg/MICROSOFT-RPM-GPG-KEY
+          tdnf -y update
+          tdnf -y install \
+            build-essential \
+            ca-certificates \
+            clang \
+            cmake \
+            curl \
+            git \
+            jq \
+            ninja-build \
+            rpm
+          rpm_name="ccf_devel_${CCF_VERSION//-/_}_x86_64.rpm"
+          curl -fsSL \
+            "https://github.com/microsoft/CCF/releases/download/ccf-${CCF_VERSION}/${rpm_name}" \
+            -o /tmp/ccf.rpm
+          digest=$(curl -fsSL \
+            "https://api.github.com/repos/microsoft/CCF/releases/tags/ccf-${CCF_VERSION}" |
+            jq -r --arg name "$rpm_name" \
+              '.assets[] | select(.name == $name) | .digest | ltrimstr("sha256:")')
+          test -n "$digest"
+          printf '%s  %s\n' "$digest" /tmp/ccf.rpm | sha256sum -c -
+          tdnf -y install /tmp/ccf.rpm
+          rm -f /tmp/ccf.rpm
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Mark checkout safe
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Locate CCF
+        id: ccf
+        run: |
+          set -euo pipefail
+          config=$(rpm -ql ccf_devel | grep -m1 '/ccf-config\.cmake$')
+          test -n "$config"
+          echo "prefix=$(dirname "$(dirname "$config")")" >> "$GITHUB_OUTPUT"
+      - name: Build and test
+        env:
+          INSTALL_DIR: ${{ steps.ccf.outputs.prefix }}
+        run: scripts/core_tests.sh
