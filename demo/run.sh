@@ -348,6 +348,8 @@ init_msrc_root() {
 restrict_ledger_policy() {
     log "replacing the permissive development policy"
     local configuration="${STATE_DIR}/ledger-configuration.json"
+    local policy_log="${LOG_DIR}/policy.log"
+    local attempt
     "${HOST_PYTHON}" "${REPO_ROOT}/demo/make_policy.py" \
         --issuer "${ISSUER_DID}" \
         --output "${configuration}" ||
@@ -355,20 +357,31 @@ restrict_ledger_policy() {
 
     # propose_configuration votes with must_pass semantics, so a rejected or
     # unaccepted proposal exits non-zero rather than leaving the old policy.
-    "${SUBMODULE_SCITT}" governance propose_configuration \
-        --url "${CCF_URL}" \
-        --member-key "${LEDGER_WORKSPACE}/member0_privk.pem" \
-        --member-cert "${LEDGER_WORKSPACE}/member0_cert.pem" \
-        --development \
-        --configuration "${configuration}" \
-        >"${LOG_DIR}/policy.log" 2>&1 ||
-        {
-            tail -n 30 "${LOG_DIR}/policy.log" >&2 || true
-            die "the restricted policy was not accepted. The permissive policy is
+    : >"${policy_log}"
+    for attempt in $(seq 1 15); do
+        if "${SUBMODULE_SCITT}" governance propose_configuration \
+            --url "${CCF_URL}" \
+            --member-key "${LEDGER_WORKSPACE}/member0_privk.pem" \
+            --member-cert "${LEDGER_WORKSPACE}/member0_cert.pem" \
+            --development \
+            --configuration "${configuration}" \
+            >>"${policy_log}" 2>&1; then
+            log "the ledger now accepts only ${ISSUER_DID}"
+            return 0
+        fi
+        if grep -q "ProposalCreatedTooLongAgo" "${policy_log}"; then
+            log "waiting for the governance proposal clock (${attempt}/15)"
+            sleep 1
+            continue
+        fi
+        tail -n 30 "${policy_log}" >&2 || true
+        die "the restricted policy was not accepted. The permissive policy is
        still in force, so the demo is stopping instead of accepting
-       submissions. See ${LOG_DIR}/policy.log."
-        }
-    log "the ledger now accepts only ${ISSUER_DID}"
+       submissions. See ${policy_log}."
+    done
+    tail -n 30 "${policy_log}" >&2 || true
+    die "the restricted policy proposal clock did not catch up. The permissive
+       policy is still in force, so the demo is stopping. See ${policy_log}."
 }
 
 # --- trust store -------------------------------------------------------------
@@ -394,6 +407,8 @@ fetch_trust_store() {
 export_settings() {
     export SDC_CLI="${CLI_BIN}"
     export SDC_DATA_DIR="${DATA_DIR}"
+    # Only the mock MSRC service registers statements with the transparency
+    # service. The web control plane inherits the URL but never submits.
     export SDC_SCITT_URL="${CCF_URL}"
     export SDC_SCITT_INSECURE=1
     export SDC_MSRC_URL="http://127.0.0.1:${MOCK_PORT}"
