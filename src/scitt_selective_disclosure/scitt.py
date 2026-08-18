@@ -18,8 +18,12 @@ from .errors import ScittError
 CT_APPLICATION_COSE = "application/cose"
 CCF_TX_ID_HEADER = "x-ms-ccf-transaction-id"
 TXID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
-SUCCESS_STATUSES = frozenset({200, 201, 202})
+REGISTRATION_SUCCESS_STATUSES = frozenset({200, 201, 202})
+HISTORICAL_SUCCESS_STATUSES = frozenset({200})
 REDIRECT_STATUSES = frozenset({302, 303, 307})
+TRANSPARENT_STATEMENT_CONTENT_TYPES = frozenset(
+    {"application/cose", "application/scitt-statement+cose"}
+)
 BODY_PREVIEW_CHARS = 200
 HISTORICAL_RETRY_STATUSES = frozenset({202, 429, 503})
 HISTORICAL_RETRY_ATTEMPTS = 60
@@ -104,7 +108,7 @@ class ScittClient:
                     txid = extract_txid(response)
                     transparent = await self._fetch_transparent_statement(client, txid)
                     return ScittRegistration(txid, transparent, self.base_url)
-                if response.status_code not in SUCCESS_STATUSES:
+                if response.status_code not in REGISTRATION_SUCCESS_STATUSES:
                     raise ScittError(
                         "The transparency service rejected the statement.",
                         detail=_preview(response),
@@ -131,9 +135,20 @@ class ScittClient:
             response = await client.get(
                 f"/entries/{txid}/statement", follow_redirects=True
             )
-            if response.status_code in SUCCESS_STATUSES and response.content:
-                return response.content
             if response.status_code not in HISTORICAL_RETRY_STATUSES:
+                if (
+                    response.status_code in HISTORICAL_SUCCESS_STATUSES
+                    and response.content
+                ):
+                    content_type = response.headers.get("content-type", "")
+                    media_type = content_type.partition(";")[0].strip().lower()
+                    if media_type not in TRANSPARENT_STATEMENT_CONTENT_TYPES:
+                        raise ScittError(
+                            "The transparency service returned an unexpected "
+                            "statement type.",
+                            detail=_preview(response),
+                        )
+                    return response.content
                 break
             if attempt + 1 < HISTORICAL_RETRY_ATTEMPTS:
                 await asyncio.sleep(HISTORICAL_RETRY_DELAY)

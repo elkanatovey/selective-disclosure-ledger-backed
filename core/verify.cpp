@@ -112,7 +112,9 @@ namespace scitt_sd::verify
       std::vector<uint8_t> protected_header;
       std::vector<uint8_t> payload;
       std::vector<uint8_t> signature;
+      size_t unprotected_entry_count = 0;
       bool has_disclosures = false;
+      bool has_unknown_unprotected = false;
       std::vector<std::vector<uint8_t>> receipts;
     };
 
@@ -149,6 +151,17 @@ namespace scitt_sd::verify
       out.signature = copy_bytes(parts[3]);
 
       const auto& unprotected = std::get<cbor::Map>(parts[1]->value);
+      out.unprotected_entry_count = unprotected.items.size();
+      for (const auto& [key, _value] : unprotected.items)
+      {
+        if (
+          !std::holds_alternative<cbor::Signed>(key->value) ||
+          (key->as_signed() != label::SD_CLAIMS &&
+           key->as_signed() != label::SCITT_RECEIPTS))
+        {
+          out.has_unknown_unprotected = true;
+        }
+      }
       const auto* disclosures = map_lookup(unprotected, label::SD_CLAIMS);
       out.has_disclosures = disclosures != nullptr;
 
@@ -884,11 +897,23 @@ namespace scitt_sd::verify
         require(
           !registered.has_disclosures,
           "the registered statement carries disclosures");
+        require(
+          !registered.has_unknown_unprotected &&
+            registered.unprotected_entry_count == 0,
+          "the registered statement unprotected header must be empty");
+        require(
+          !transparent.has_disclosures,
+          "the transparent statement carries disclosures (17)");
         // Whether that receipt is valid is a separate check; that one is
         // present at all is a property of the bundle being shown.
         require(
           !transparent.receipts.empty(),
           "the transparent statement carries no receipt (394)");
+        require(
+          !transparent.has_unknown_unprotected &&
+            transparent.unprotected_entry_count == 1,
+          "the transparent statement unprotected header must contain only "
+          "receipts (394)");
       });
 
       Result result;

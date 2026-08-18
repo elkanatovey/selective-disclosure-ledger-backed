@@ -72,6 +72,9 @@ class ScittStub:
     empty_body: bool = False
     unreachable: bool = False
     historical_unavailable_count: int = 0
+    historical_accepted_count: int = 0
+    historical_status_code: int = 200
+    historical_content_type: str = "application/scitt-statement+cose"
 
     @property
     def registrations(self) -> list[RecordedRequest]:
@@ -104,7 +107,18 @@ class ScittStub:
             if self.historical_unavailable_count > 0:
                 self.historical_unavailable_count -= 1
                 return httpx.Response(503, content=b"history is being prepared")
-            return httpx.Response(200, content=self.receipt)
+            if self.historical_accepted_count > 0:
+                self.historical_accepted_count -= 1
+                return httpx.Response(
+                    202,
+                    content=b"history is being prepared",
+                    headers={"content-type": "text/plain"},
+                )
+            return httpx.Response(
+                self.historical_status_code,
+                content=self.receipt,
+                headers={"content-type": self.historical_content_type},
+            )
         return httpx.Response(404, json={"error": "not found"})
 
 

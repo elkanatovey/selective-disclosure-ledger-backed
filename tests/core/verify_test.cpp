@@ -53,6 +53,27 @@ namespace
          signature == nullptr ? parts[3] : sdcwt::bytes_value(*signature)})));
   }
 
+  std::vector<uint8_t> attach_unknown_unprotected(
+    std::span<const uint8_t> token)
+  {
+    const auto root = cbor::parse(token);
+    const auto& parts =
+      std::get<cbor::Array>(root->tag_at(cbor::tag::COSE_SIGN_1)->value).items;
+    std::vector<cbor::MapItem> unprotected;
+    for (const auto& [key, value] : std::get<cbor::Map>(parts[1]->value).items)
+    {
+      unprotected.emplace_back(key, value);
+    }
+    unprotected.emplace_back(cbor::make_signed(999), cbor::make_signed(1));
+    return cbor::serialize(cbor::make_tagged(
+      cbor::tag::COSE_SIGN_1,
+      cbor::make_array(
+        {parts[0],
+         cbor::make_map(std::move(unprotected)),
+         parts[2],
+         parts[3]})));
+  }
+
   // A scenario over a CCF-generated chain, whose leaf cannot carry an EKU: the
   // did:x509 therefore pins the leaf subject instead.
   Scenario make_subject_scenario(
@@ -166,17 +187,48 @@ namespace
     EXPECT_EQ(result.issued_at, 1700000000);
   }
 
-  // A real presentation carries both receipts (394) and disclosures (17) in
-  // the transparent statement's unprotected header.
-  TEST(Verify, AcceptsAPresentedTransparentStatement)
+  TEST(Verify, RejectsDisclosuresSmuggledInTheTransparentStatement)
   {
     auto scenario = make_eku_scenario();
     scenario.proof.transparent_statement = report::present(
       scenario.proof.transparent_statement, scenario.proof.disclosures);
     const RecordingReceiptVerifier receipts;
 
-    EXPECT_NO_THROW((void)verify::verify_bundle(
-      scenario.proof, eku_params(scenario.chain), receipts));
+    try
+    {
+      (void)verify::verify_bundle(
+        scenario.proof, eku_params(scenario.chain), receipts);
+      FAIL() << "expected verification to reject unsigned disclosures";
+    }
+
+    catch (const verify::VerificationError& e)
+    {
+      EXPECT_EQ(e.check(), verify::Check::StatementBinding);
+      EXPECT_NE(
+        e.reason().find("transparent statement carries disclosures"),
+        std::string::npos);
+    }
+  }
+
+  TEST(Verify, RejectsUnknownTransparentUnprotectedHeaders)
+  {
+    auto scenario = make_eku_scenario();
+    scenario.proof.transparent_statement =
+      attach_unknown_unprotected(scenario.proof.transparent_statement);
+    const RecordingReceiptVerifier receipts;
+
+    try
+    {
+      (void)verify::verify_bundle(
+        scenario.proof, eku_params(scenario.chain), receipts);
+      FAIL() << "expected verification to reject unknown unprotected headers";
+    }
+    catch (const verify::VerificationError& e)
+    {
+      EXPECT_EQ(e.check(), verify::Check::StatementBinding);
+      EXPECT_NE(
+        e.reason().find("must contain only receipts"), std::string::npos);
+    }
   }
 
   TEST(Verify, IgnoreCertificateTimeAcceptsAnExpiredChain)

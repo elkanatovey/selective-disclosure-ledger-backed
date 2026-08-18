@@ -139,6 +139,47 @@ def test_transparency_history_is_retried_before_delivery(harness: Harness) -> No
     assert len(statement_reads) == 3
 
 
+def test_transparency_202_body_is_not_accepted(harness: Harness) -> None:
+    """A historical progress body must never become the stored statement."""
+    enrollment = harness.enroll()
+    harness.scitt.historical_accepted_count = 1
+
+    response = harness.submit(enrollment)
+
+    assert response.status_code == 200, response.text
+    transparent = harness.web.get(response.json()["transparent_url"])
+    assert transparent.content == harness.scitt.receipt
+    statement_reads = [
+        request
+        for request in harness.scitt.requests
+        if request.path == f"/entries/{harness.scitt.txid}/statement"
+    ]
+    assert len(statement_reads) == 2
+
+
+def test_transparency_requires_cose_content_type(harness: Harness) -> None:
+    """A successful historical response must identify itself as COSE."""
+    enrollment = harness.enroll()
+    harness.scitt.historical_content_type = "text/plain"
+
+    response = harness.submit(enrollment)
+
+    assert response.status_code == 502
+    payload = response.json()
+    stage = next(item for item in payload["stages"] if item["name"] == "scitt_register")
+    assert "unexpected statement type" in stage["detail"].lower()
+
+
+def test_transparency_accepts_generic_cose_content_type(harness: Harness) -> None:
+    """Generic application/cose remains valid for compatible SCITT services."""
+    enrollment = harness.enroll()
+    harness.scitt.historical_content_type = "application/cose; charset=binary"
+
+    response = harness.submit(enrollment)
+
+    assert response.status_code == 200, response.text
+
+
 def test_transparency_token_is_absent_before_registration(harness: Harness) -> None:
     """A submission that never registered has no token to download."""
     enrollment = harness.enroll()
