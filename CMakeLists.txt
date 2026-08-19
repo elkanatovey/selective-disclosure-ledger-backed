@@ -193,8 +193,11 @@ if(SCITT_SD_PYTHON_MODULE)
     scitt_sd_python_module MODULE
     ${CMAKE_CURRENT_SOURCE_DIR}/bindings/python_module.cpp
   )
+  # No target here uses C++20 modules, and scanning for them would otherwise
+  # require clang-scan-deps to be installed alongside the compiler.
   set_target_properties(
-    scitt_sd_python_module PROPERTIES OUTPUT_NAME _native
+    scitt_sd_python_module
+    PROPERTIES OUTPUT_NAME _native CXX_SCAN_FOR_MODULES OFF
   )
   target_link_libraries(scitt_sd_python_module PRIVATE scitt_sd_native)
   target_compile_definitions(
