@@ -1,0 +1,148 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+# The whole demo against a real transparency service: build the core, build the
+# pinned scitt-ccf-ledger, start it, and run the flow through the app.
+#
+# The ledger is slow to build, so it is cached on its pinned commit and the CCF
+# version it links against.
+
+name: demo
+
+on:
+  push:
+    paths:
+      - "app/**"
+      - "core/**"
+      - "native/**"
+      - "bindings/**"
+      - "tests/integration/**"
+      - "scripts/demo_test.sh"
+      - "scripts/ledger.sh"
+      - "scripts/ledger_configure.sh"
+      - "CMakeLists.txt"
+      - "pyproject.toml"
+      - ".github/workflows/demo.yml"
+  pull_request:
+    paths:
+      - "app/**"
+      - "core/**"
+      - "native/**"
+      - "bindings/**"
+      - "tests/integration/**"
+      - "scripts/demo_test.sh"
+      - "scripts/ledger.sh"
+      - "scripts/ledger_configure.sh"
+      - "CMakeLists.txt"
+      - "pyproject.toml"
+      - ".github/workflows/demo.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full-flow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container:
+      image: mcr.microsoft.com/azurelinux/base/core:3.0
+      options: --user root
+    env:
+      CCF_VERSION: "7.0.10"
+      # Keep in step with LEDGER_SHA in scripts/ledger.sh.
+      LEDGER_SHA: "5d471384ef7808cb0208ac3d141b4910b83cb48f"
+    steps:
+      - name: Install build environment and CCF
+        run: |
+          set -euo pipefail
+          gpg --import /etc/pki/rpm-gpg/MICROSOFT-RPM-GPG-KEY
+          tdnf -y update
+          tdnf -y install \
+            build-essential \
+            ca-certificates \
+            clang \
+            cmake \
+            curl \
+            git \
+            jq \
+            ninja-build \
+            openssl \
+            procps-ng \
+            python3 \
+            python3-devel \
+            python3-pip \
+            rpm \
+            tar \
+            unzip \
+            util-linux \
+            which
+          rpm_name="ccf_devel_${CCF_VERSION//-/_}_x86_64.rpm"
+          curl -fsSL \
+            "https://github.com/microsoft/CCF/releases/download/ccf-${CCF_VERSION}/${rpm_name}" \
+            -o /tmp/ccf.rpm
+          digest=$(curl -fsSL \
+            "https://api.github.com/repos/microsoft/CCF/releases/tags/ccf-${CCF_VERSION}" |
+            jq -r --arg name "$rpm_name" \
+              '.assets[] | select(.name == $name) | .digest | ltrimstr("sha256:")')
+          test -n "$digest"
+          printf '%s  %s\n' "$digest" /tmp/ccf.rpm | sha256sum -c -
+          tdnf -y install /tmp/ccf.rpm
+          rm -f /tmp/ccf.rpm
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Mark checkout safe
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Locate CCF
+        id: ccf
+        run: |
+          set -euo pipefail
+          rpm -ql ccf_devel > /tmp/ccf-devel-files
+          config=$(sed -n '/\/ccf-config\.cmake$/{p;q;}' /tmp/ccf-devel-files)
+          test -n "$config"
+          prefix=$(dirname "$(dirname "$config")")
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          # The scripts default to /opt/ccf, and sandbox.sh resolves paths
+          # relative to its own location, so give it the place it expects.
+          [ -e /opt/ccf ] || { mkdir -p /opt && ln -s "$prefix" /opt/ccf; }
+
+      - name: Cache the transparency service build
+        id: ledger-cache
+        uses: actions/cache@v4
+        with:
+          path: third_party/scitt-ccf-ledger/build-native
+          key: ledger-${{ env.LEDGER_SHA }}-ccf${{ env.CCF_VERSION }}-azl3
+
+      - name: Build the core and the extension module
+        run: |
+          set -euo pipefail
+          cmake -GNinja -S . -B build \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_PREFIX_PATH="${{ steps.ccf.outputs.prefix }}" \
+            -DBUILD_PYTHON_MODULE=ON
+          ninja -C build
+
+      - name: Install the app
+        run: |
+          set -euo pipefail
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -e ".[dev]"
+
+      - name: Run the full flow
+        run: scripts/demo_test.sh
+
+      - name: Logs
+        if: failure()
+        run: |
+          for log in /tmp/demo-ledger.log /tmp/demo-app.log; do
+            echo "===== $log ====="
+            tail -100 "$log" 2>/dev/null || echo "(missing)"
+          done

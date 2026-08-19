@@ -1,0 +1,144 @@
+; Copyright (c) Microsoft Corporation.
+; Licensed under the MIT License.
+;
+; CDDL (RFC 8610) for the selective-disclosure bug report statement: an SD-CWT
+; (draft-ietf-spice-sd-cwt) carrying the SCITT X.509 protected headers
+; (draft-ietf-scitt-scitt-architecture), built on COSE (RFC 9052) and CWT
+; (RFC 8392).
+;
+; This is the format core/report.h issues and core/verify.h checks. The labels
+; and shapes below are normative for that code; docs/architecture.md explains
+; the rationale.
+
+; ==========================================================================
+; A registered statement is a COSE_Sign1 (tag 18) whose every content claim is
+; redacted. A transparent statement is the same signed bytes with receipts
+; added to the unprotected header; a presentation additionally carries the
+; disclosures being revealed. The protected header, payload and signature are
+; identical in all three.
+; ==========================================================================
+
+statement = #6.18([
+  protected   : bstr .cbor protected-header,  ; signed
+  unprotected : unprotected-header,           ; NOT signed
+  payload     : bstr .cbor claims,            ; signed: the redacted claims
+  signature   : bstr,                         ; issuer ECDSA, r || s (P1363)
+])
+
+; --- Protected header (signed) --------------------------------------------
+; Exactly these six entries, emitted in CDE key order (RFC 8949 4.2):
+; 1 < 2 < 15 < 16 < 33 < 170.
+protected-header = {
+  1   : cose-alg,      ; issuer signature algorithm
+  2   : [15, 33],      ; crit: CWT claims and x5chain must be understood
+  15  : cwt-claims,    ; CWT claims header (RFC 9597)
+  16  : 293,           ; typ = application/sd-cwt
+  33  : x5chain,       ; issuer certificate chain
+  170 : sd-alg,        ; SD-CWT redaction hash algorithm
+}
+
+cose-alg = &(
+  ES256: -7,
+  ES384: -35,
+  ES512: -36,
+)
+
+sd-alg = &(
+  SHA-256: -16,
+  SHA-384: -43,
+  SHA-512: -44,
+)
+
+; iss is a did:x509 pinning the trust anchor and the required EKU:
+;   did:x509:0:sha256:<base64url(SHA-256(root DER))>::eku:1.3.6.1.5.5.7.3.3
+cwt-claims = {
+  1 : tstr,   ; iss
+  2 : tstr,   ; sub
+}
+
+; Leaf first, trust anchor last, at least two certificates. A verifier
+; requires the last one to be exactly its separately trusted root.
+x5chain = [2* bstr]
+
+; --- Unprotected header (NOT signed) --------------------------------------
+; 17 (sd_claims) is replaced wholesale on each presentation and omitted when
+; nothing is disclosed; 394 (receipts) is added at registration and MUST
+; survive every disclosure edit.
+unprotected-header = {
+  ? 17  : [+ disclosure],
+  ? 394 : [+ receipt],
+}
+
+; A SCITT receipt, opaque to this schema: it is verified against the exact
+; registered statement bytes by the transparency service's own profile.
+receipt = bstr
+
+; ==========================================================================
+; Claims. A registered statement carries `iat` in the clear and nothing else:
+; all six content claims appear only as Redacted Claim Hashes. A verifier
+; restores a content claim only once its disclosure has been resolved.
+; ==========================================================================
+
+claims = registered-claims / disclosed-claims
+
+registered-claims = {
+  6     : uint,                  ; iat, seconds since the epoch
+  #7.59 => [6* 6 redacted-hash], ; one hash per content claim
+}
+
+; The verifier's reconstructed view: the same payload with the disclosed
+; claims filled back in and the still-hidden ones left as hashes.
+disclosed-claims = {
+  6       : uint,
+  ? #7.59 => [* redacted-hash],
+  * content-key => content-value,
+}
+
+content-value = tstr / bstr / body-map / references-array
+
+; The CBOR simple value 59 marks redacted map keys. Each entry is
+;   sd-alg( bstr .cbor <the disclosure's salted array> )
+; and the array is sorted in ascending byte order.
+redacted-hash = bstr
+
+; Content claim labels. All are redacted at issuance, so they appear in a
+; payload only once a disclosure has been resolved by a verifier.
+content-key = &(
+  title:       1001,   ; tstr
+  body:        1002,   ; body-map
+  component:   1003,   ; tstr
+  severity:    1004,   ; tstr
+  fingerprint: 1005,   ; bstr
+  references:  1006,   ; references-array
+)
+
+; The body is a map keyed by stable chunk index, so a disclosed chunk always
+; says where it belongs and a gap is unambiguous. Each chunk is at most six
+; Unicode code points of well-formed UTF-8.
+body-map = {
+  * uint => tstr,                ; chunks disclosed so far
+  ? #7.59 => [* redacted-hash],  ; chunks still hidden
+}
+
+; References keep their positions: a hidden element stays in place as tag(60)
+; wrapping its Redacted Claim Hash, so element indices never shift.
+references-array = [* (tstr / #6.60(redacted-hash))]
+
+; ==========================================================================
+; A disclosure is the opening of one redacted entry, carried as a bstr holding
+; a CBOR array. A redacted map entry is opened as [salt, value, key]; a
+; redacted array element as [salt, value]; salt-only padding as [salt].
+; ==========================================================================
+
+disclosure = bstr .cbor disclosure-opening
+
+disclosure-opening =
+    map-disclosure
+  / element-disclosure
+  / decoy-disclosure
+
+map-disclosure     = [salt, value: any, key: int]
+element-disclosure = [salt, value: any]
+decoy-disclosure   = [salt]
+
+salt = bstr .size 16   ; 128-bit CSPRNG salt, never reused

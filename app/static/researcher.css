@@ -1,0 +1,126 @@
+/*
+ * Copyright (c) Microsoft Corporation.
+ * Licensed under the MIT License.
+ */
+
+body {
+  font-family: system-ui, sans-serif;
+  max-width: 46rem;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  line-height: 1.5;
+}
+
+h1 {
+  font-size: 1.4rem;
+}
+
+h2 {
+  font-size: 1rem;
+  margin-bottom: 0.4rem;
+}
+
+section {
+  border-top: 1px solid #ddd;
+  padding-top: 1rem;
+  margin-top: 1rem;
+}
+
+.state {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+label {
+  display: block;
+  margin-top: 0.6rem;
+  font-size: 0.85rem;
+}
+
+input,
+textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.3rem;
+}
+
+input[type="checkbox"],
+input[type="file"] {
+  width: auto;
+}
+
+button {
+  margin-top: 1rem;
+  font: inherit;
+  padding: 0.4rem 0.8rem;
+}
+
+.field {
+  display: block;
+  margin: 0.2rem 0;
+  font-size: 0.9rem;
+}
+
+.body {
+  font-family: ui-monospace, monospace;
+  line-height: 2;
+  word-break: break-all;
+  user-select: none;
+}
+
+.chunk {
+  cursor: pointer;
+  border-bottom: 1px dotted #bbb;
+}
+
+.chunk:hover {
+  background: #eef;
+}
+
+/* A withheld disclosure: the text is absent from the export, not covered. */
+.bar {
+  background: #000;
+  color: transparent;
+  cursor: pointer;
+  white-space: pre;
+}
+
+.hint {
+  color: #444;
+  font-size: 0.85rem;
+}
+
+.check {
+  margin: 0.5rem 0;
+  padding-left: 0.6rem;
+  border-left: 4px solid #bbb;
+  list-style: none;
+}
+
+.check.pass {
+  border-color: #2a7;
+}
+
+.check.fail {
+  border-color: #c33;
+}
+
+.check.unattributable {
+  border-color: #e90;
+}
+
+.check.skipped {
+  border-color: #e90;
+}
+
+/* A summary that passed but left something unchecked. */
+.state.warn {
+  color: #a60;
+  font-weight: 700;
+}
+
+ul {
+  padding-left: 0;
+}

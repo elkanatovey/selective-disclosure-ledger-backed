@@ -1,0 +1,8 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+printWidth: 88
+proseWrap: always
+singleQuote: false
+tabWidth: 2
+useTabs: false

@@ -1,0 +1,55 @@
+<!--
+  Copyright (c) Microsoft Corporation.
+  Licensed under the MIT License.
+-->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Verify</title>
+    <link rel="stylesheet" href="/static/researcher.css" />
+  </head>
+  <body>
+    <h1>Verify a Release</h1>
+
+    <section>
+      <h2>1. What to check</h2>
+      <label for="release-file">Signed release (.cose)</label>
+      <input type="file" id="release-file" accept=".cose,.cbor" />
+
+      <label for="root-file">
+        MSRC root certificate (PEM). Supply this yourself: a release that
+        vouched for its own trust anchor would prove nothing.
+      </label>
+      <input type="file" id="root-file" accept=".pem,.crt,.cer" />
+
+      <label for="scitt-file">
+        Transparency service certificate (PEM). Without it the receipt cannot
+        be checked, and nothing shows the statement was ever registered.
+      </label>
+      <input type="file" id="scitt-file" accept=".pem,.crt,.cer" />
+
+      <button id="verify">Verify</button>
+      <p id="verify-state" class="state">Nothing checked yet.</p>
+    </section>
+
+    <section id="checks-section" hidden>
+      <h2>2. Checks</h2>
+      <ul id="checks"></ul>
+    </section>
+
+    <section id="contents-section" hidden>
+      <h2>3. What it discloses</h2>
+      <div id="fields"></div>
+      <h3>Body</h3>
+      <p id="body-text" class="body"></p>
+      <p class="hint">
+        A black bar is content the report commits to but this release does not
+        open.
+      </p>
+    </section>
+
+    <script src="/static/verify.js"></script>
+  </body>
+</html>

@@ -1,0 +1,12 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+.git
+.mypy_cache
+.ruff_cache
+.venv
+__pycache__
+build
+dist
+node_modules
+third_party
