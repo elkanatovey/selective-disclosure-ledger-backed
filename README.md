@@ -9,9 +9,10 @@ A researcher submits a bug report as an X.509-signed SD-CWT. Every content claim
 redacted, so the transparency service registers a statement it cannot read. Only
 afterwards does MSRC receive the disclosures.
 
-The signing key is generated in the browser and never leaves it. The backend builds the
-statement, hands the browser the exact bytes to sign, and holds no key material at any
-point.
+The two signing keys are generated in browsers and never leave them: the researcher's,
+and the one MSRC signs releases with. Each agent hands its browser the exact bytes to
+sign and gets back a signature. MSRC's service does hold one private key, its CA key,
+because issuing certificates is what a CA is for.
 
 ## The flow
 
