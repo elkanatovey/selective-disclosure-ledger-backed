@@ -31,20 +31,27 @@ log() { printf '[ledger] %s\n' "$*" >&2; }
 
 # --- fetch the application ---------------------------------------------------
 
-# The checkout may be a worktree, so ask git rather than looking for a .git dir.
-# It may also already hold a restored build tree, which rules out git clone.
-if ! git -C "$LEDGER" rev-parse --git-dir >/dev/null 2>&1; then
+# `git -C <dir>` walks up to the enclosing repository, and this directory sits
+# inside one, so asking whether it is a checkout has to mean asking whether it
+# is the ROOT of its own. Anything less and the fetch and force-checkout below
+# would run against this repository instead of the ledger's.
+LEDGER_ABS=$(mkdir -p "$LEDGER" && cd "$LEDGER" && pwd)
+toplevel=$(git -C "$LEDGER_ABS" rev-parse --show-toplevel 2>/dev/null || true)
+if [ "$toplevel" != "$LEDGER_ABS" ]; then
+  # A restored build tree may already be here, which rules out git clone.
   log "fetching the transparency service at $LEDGER_SHA"
-  mkdir -p "$LEDGER"
-  git -C "$LEDGER" init --quiet
-  git -C "$LEDGER" remote add origin "$LEDGER_URL"
+  git -C "$LEDGER_ABS" init --quiet
+  git -C "$LEDGER_ABS" remote add origin "$LEDGER_URL"
 fi
-if [ "$(git -C "$LEDGER" rev-parse HEAD 2>/dev/null || echo none)" != "$LEDGER_SHA" ]; then
+if [ "$(git -C "$LEDGER_ABS" rev-parse HEAD 2>/dev/null || echo none)" != "$LEDGER_SHA" ]; then
   log "checking out $LEDGER_SHA"
-  git -C "$LEDGER" fetch --quiet --depth 1 origin "$LEDGER_SHA" ||
-    git -C "$LEDGER" fetch --quiet origin
-  git -C "$LEDGER" checkout --quiet --force "$LEDGER_SHA"
+  # Fetching a bare commit needs the server's permission, so fall back to
+  # fetching the branches and finding it in their history.
+  git -C "$LEDGER_ABS" fetch --quiet --depth 1 origin "$LEDGER_SHA" 2>/dev/null ||
+    git -C "$LEDGER_ABS" fetch --quiet origin
+  git -C "$LEDGER_ABS" checkout --quiet --force "$LEDGER_SHA"
 fi
+LEDGER=$LEDGER_ABS
 
 # --- build the application ---------------------------------------------------
 

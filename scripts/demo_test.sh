@@ -33,7 +33,9 @@ cleanup() {
   local status=$?
   trap - EXIT INT TERM
   for pid in "${APP_PIDS[@]:-}"; do
-    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+    if [ -n "$pid" ]; then
+      kill "$pid" 2>/dev/null || true
+    fi
   done
   if [ -n "$LEDGER_PID" ]; then
     # sandbox.sh starts the node as a child, so stop the group.
