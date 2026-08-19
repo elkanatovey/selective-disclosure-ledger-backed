@@ -204,9 +204,9 @@ $("load-key").addEventListener("click", async () => {
       : await crypto.subtle.generateKey(ALGORITHM, false, ["sign"]);
     const spki = await crypto.subtle.exportKey("spki", state.key.publicKey);
     state.publicKeyPem = toPem(spki);
-    // Published to the report application so statements can name it in cnf.
+    // Published to MSRC's own service so statements can name it in cnf.
     // Nothing about this key goes to the transparency service.
-    await post("/api/msrc/key", { public_key_pem: state.publicKeyPem });
+    await post("/api/key", { public_key_pem: state.publicKeyPem });
     $("key-state").textContent = file
       ? "Loaded your release key and published its public half."
       : "Generated a release key and published its public half.";
@@ -225,7 +225,7 @@ $("load").addEventListener("click", async () => {
   $("load-state").textContent = "Reading...";
   try {
     state.bundleB64 = b64encode(await file.arrayBuffer());
-    const { inspection } = await post("/api/msrc/inspect", {
+    const { inspection } = await post("/api/inspect", {
       bundle_b64: state.bundleB64,
     });
     state.fields = inspection.fields.filter((field) => field.disclosed);
@@ -256,7 +256,7 @@ $("export").addEventListener("click", async () => {
   }
   $("export-state").textContent = "Signing...";
   try {
-    const prepared = await post("/api/msrc/release", {
+    const prepared = await post("/api/release", {
       bundle_b64: state.bundleB64,
       public_key_pem: state.publicKeyPem,
       redact_fields: state.fields
@@ -274,7 +274,7 @@ $("export").addEventListener("click", async () => {
       b64decode(prepared.to_be_signed_b64),
     );
 
-    const result = await post("/api/msrc/sign", {
+    const result = await post("/api/sign", {
       release_id: prepared.release_id,
       signature_b64: b64encode(signature),
     });

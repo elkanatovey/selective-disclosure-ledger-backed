@@ -1,25 +1,26 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-"""An in-process stand-in for MSRC.
+"""The part of MSRC that is pretended.
 
-MSRC is mocked because this demo is about what a researcher and MSRC do with a
-statement, not about how MSRC runs a PKI. The transparency service is NOT
-mocked: statements are registered with a real one, because a receipt nobody
-could check would make the whole exercise pointless.
+MSRC runs as its own service, but what it does there is mocked: it certifies
+any public key it is offered, without checking who is asking. A deployment's
+entire trust story lives in that decision, and here it is a function that says
+yes. The cryptography is real throughout; only the judgement is missing.
+
+The transparency service is NOT mocked: statements are registered with a real
+one, because a receipt nobody could check would make the whole exercise
+pointless.
 """
 
 from __future__ import annotations
 
 import secrets
 from dataclasses import dataclass
-from typing import TypeVar
 
 import _native
 
-MAX_RECORDS = 256
-
-_Record = TypeVar("_Record")
+from .common import evict
 
 
 @dataclass(frozen=True)
@@ -77,10 +78,3 @@ class MockMsrc:
         evict(self.submissions)
         self.submissions[record.submission_id] = record
         return record
-
-
-def evict(records: dict[str, _Record]) -> None:
-    # The demo keeps everything in memory, so the oldest record goes rather
-    # than letting a caller grow the process without bound.
-    while len(records) >= MAX_RECORDS:
-        records.pop(next(iter(records)))

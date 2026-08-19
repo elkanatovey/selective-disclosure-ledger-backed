@@ -43,17 +43,19 @@ class Registration:
 class ScittLedger:
     """Registers statements with a SCITT transparency service over HTTPS."""
 
-    def __init__(self, url: str, service_cert: bytes) -> None:
+    def __init__(self, url: str, tls_cert: bytes, service_identity: bytes) -> None:
         parsed = urllib.parse.urlparse(url)
         if parsed.scheme != "https" or not parsed.hostname:
             raise ValueError("the transparency service URL must be https")
         self.url = url.rstrip("/")
         self._host = parsed.hostname
         self._port = parsed.port or 443
-        # The service certificate is the trust anchor for the connection and
-        # is the same certificate a reader checks receipts against.
-        self.service_cert = service_cert
-        self._context = ssl.create_default_context(cadata=service_cert.decode("ascii"))
+        # Two different questions, kept apart because they have different
+        # answers in any real deployment: which endpoint to trust to reach the
+        # service, and whose signature makes a receipt worth anything. Here the
+        # same self-signed certificate happens to answer both.
+        self.service_identity = service_identity
+        self._context = ssl.create_default_context(cadata=tls_cert.decode("ascii"))
 
     def _request(
         self, method: str, path: str, body: bytes | None = None
@@ -129,7 +131,12 @@ def _refusal(status: int, body: bytes) -> str:
 
 
 def from_environment() -> ScittLedger:
-    """The service named by SCITT_URL, trusted via SCITT_SERVICE_CERT."""
+    """The service named by SCITT_URL.
+
+    SCITT_SERVICE_CERT is the TLS anchor. SCITT_SERVICE_IDENTITY is the
+    certificate receipts are checked against, and defaults to the same file
+    because a CCF sandbox serves TLS under its own service identity.
+    """
     url = os.environ.get("SCITT_URL")
     cert_path = os.environ.get("SCITT_SERVICE_CERT")
     if not url or not cert_path:
@@ -137,5 +144,9 @@ def from_environment() -> ScittLedger:
             "set SCITT_URL and SCITT_SERVICE_CERT to the transparency service "
             "this demo registers with"
         )
+    identity_path = os.environ.get("SCITT_SERVICE_IDENTITY", cert_path)
     with open(cert_path, "rb") as handle:
-        return ScittLedger(url, handle.read(MAX_RESPONSE_BYTES))
+        tls_cert = handle.read(MAX_RESPONSE_BYTES)
+    with open(identity_path, "rb") as handle:
+        identity = handle.read(MAX_RESPONSE_BYTES)
+    return ScittLedger(url, tls_cert, identity)

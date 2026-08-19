@@ -148,12 +148,12 @@ $("report").addEventListener("submit", async (event) => {
       `Transaction ${result.txid} - MSRC submission ${result.submission_id}`;
 
     const link = $("bundle-link");
-    link.href = `/api/submissions/${result.submission_id}/bundle`;
+    link.href = `/api/bundle/${result.submission_id}`;
     link.textContent = `Download the proof bundle (${result.bundle_bytes} bytes)`;
     link.hidden = false;
 
     $("summary").textContent =
-      `Registered with the transparency service before MSRC received the ` +
+      `Receipt verified here before MSRC received the ` +
       `${prepared.disclosure_count} disclosures.`;
   } catch (error) {
     $("outcome").textContent = `Failed: ${error.message}`;
